@@ -64,56 +64,68 @@ const STYLE_IDS = COURSE_STYLES.filter((style) => style.id !== "variety").map((s
 
 const STYLE_PROFILES = {
   snake: {
-    horizontal: [2, 4],
-    vertical: [3, 7],
+    horizontalMax: 3,
+    swingMin: 3,
+    swingMax: 7,
+    widthMin: 2,
     widthBase: 2,
     widthMax: 4,
-    alternate: true
+    verticalBias: 0.88,
+    alternating: true
   },
   ladder: {
-    horizontal: [1, 3],
-    vertical: [5, 9],
+    horizontalMax: 2,
+    swingMin: 5,
+    swingMax: 9,
+    widthMin: 1,
     widthBase: 2,
     widthMax: 3,
-    alternate: true
+    verticalBias: 0.94,
+    alternating: true
   },
   canyon: {
-    horizontal: [3, 5],
-    vertical: [2, 5],
+    horizontalMax: 4,
+    swingMin: 2,
+    swingMax: 5,
+    widthMin: 2,
     widthBase: 3,
     widthMax: 5,
-    alternate: false
+    verticalBias: 0.72,
+    alternating: false
   },
   zigzag: {
-    horizontal: [1, 2],
-    vertical: [2, 6],
+    horizontalMax: 2,
+    swingMin: 2,
+    swingMax: 5,
+    widthMin: 1,
     widthBase: 1,
     widthMax: 3,
-    alternate: true
+    verticalBias: 0.9,
+    alternating: true
   }
 };
 
 const COLORS = {
-  page: "#f6efe3",
-  stage: "#c4bda9",
-  blocked: "#ece8de",
-  blockedStroke: "#9e9889",
-  path: "#5967ff",
-  start: "#2fc38e",
+  page: "#f6efe2",
+  stage: "#c8bea8",
+  boardShadow: "rgba(70, 57, 38, 0.16)",
+  wall: "#ece7dd",
+  path: "#4f63ff",
+  start: "#25c48a",
   finishLight: "#ffffff",
   finishDark: "#121212",
-  ink: "#24211c",
-  softInk: "#706a5e",
+  ink: "#27231d",
+  muted: "#746c60",
   accent: "#ff7a45",
-  overlay: "rgba(255, 250, 243, 0.94)"
+  chip: "rgba(255, 250, 242, 0.96)"
 };
 
 const RACER_PALETTE = [
   { color: "#ff7a45", frequency: 220, wave: "sine" },
-  { color: "#2fc38e", frequency: 247, wave: "triangle" },
-  { color: "#5d78ff", frequency: 262, wave: "square" },
+  { color: "#25c48a", frequency: 247, wave: "triangle" },
+  { color: "#5b7cff", frequency: 262, wave: "square" },
   { color: "#ffd166", frequency: 294, wave: "sawtooth" },
-  { color: "#d46bff", frequency: 330, wave: "triangle" },
+  { color: "#d86cff", frequency: 330, wave: "triangle" },
   { color: "#fb5f86", frequency: 392, wave: "square" }
 ];
 
@@ -168,6 +180,22 @@ function randomSeed() {
 
 function formatTime(seconds) {
   return `${seconds.toFixed(1)}s`;
+}
+
+function drawRoundedRect(x, y, width, height, radius, fillStyle) {
+  context.beginPath();
+  context.moveTo(x + radius, y);
+  context.lineTo(x + width - radius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + radius);
+  context.lineTo(x + width, y + height - radius);
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  context.lineTo(x + radius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - radius);
+  context.lineTo(x, y + radius);
+  context.quadraticCurveTo(x, y, x + radius, y);
+  context.closePath();
+  context.fillStyle = fillStyle;
+  context.fill();
 }
 
 function getRecordingProfile() {
@@ -282,10 +310,11 @@ function setCanvasPreset(presetId) {
 
 function getPlayfield() {
   const portrait = canvas.height > canvas.width;
-  const topInset = portrait ? 136 : 90;
-  const bottomInset = portrait ? 106 : 82;
-  const sideInset = 38;
-  const size = Math.min(canvas.width - sideInset * 2, canvas.height - topInset - bottomInset);
+  const topInset = portrait ? 128 : 86;
+  const bottomInset = portrait ? 100 : 78;
+  const horizontalInset = 34;
+  const size = Math.min(canvas.width - horizontalInset * 2, canvas.height - topInset - bottomInset);
+
   return {
     left: Math.floor((canvas.width - size) * 0.5),
     top: topInset,
@@ -301,12 +330,10 @@ function createMatrix(rows, cols, value = false) {
 }
 
 function carveRect(grid, x, y, width, height) {
-  const rows = grid.length;
-  const cols = grid[0].length;
-  const minX = clamp(x, 0, cols - 1);
-  const minY = clamp(y, 0, rows - 1);
-  const maxX = clamp(x + width - 1, 0, cols - 1);
-  const maxY = clamp(y + height - 1, 0, rows - 1);
+  const minX = clamp(x, 0, GRID_SIZE - 1);
+  const minY = clamp(y, 0, GRID_SIZE - 1);
+  const maxX = clamp(x + width - 1, 0, GRID_SIZE - 1);
+  const maxY = clamp(y + height - 1, 0, GRID_SIZE - 1);
 
   for (let row = minY; row <= maxY; row += 1) {
     for (let col = minX; col <= maxX; col += 1) {
@@ -315,140 +342,209 @@ function carveRect(grid, x, y, width, height) {
   }
 }
 
-function chooseResolvedStyle(styleId, randomFn) {
+function carveCentered(grid, point, width) {
+  const radius = Math.floor(width / 2);
+  carveRect(grid, point.x - radius, point.y - radius, width, width);
+}
+
+function carveConnection(grid, previous, next, width) {
+  const radius = Math.floor(width / 2);
+  const minX = Math.min(previous.x, next.x) - radius;
+  const minY = Math.min(previous.y, next.y) - radius;
+  const rectWidth = Math.abs(previous.x - next.x) + width;
+  const rectHeight = Math.abs(previous.y - next.y) + width;
+  carveRect(grid, minX, minY, rectWidth, rectHeight);
+}
+
+function chooseStyle(styleId, randomFn) {
   if (styleId !== "variety") {
     return styleId;
   }
   return STYLE_IDS[randomInt(randomFn, 0, STYLE_IDS.length - 1)];
 }
 
-function nextWidth(currentWidth, profile, varianceRate, randomFn) {
-  const chance = varianceRate / 100;
-  if (randomFn() > chance) {
-    return currentWidth;
+function generateGoalTop(randomFn, startTop) {
+  let goalTop = randomInt(randomFn, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
+  let tries = 0;
+  while (Math.abs(goalTop - startTop) < 5 && tries < 12) {
+    goalTop = randomInt(randomFn, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
+    tries += 1;
   }
-
-  const delta = randomFn() > 0.5 ? 1 : -1;
-  const next = clamp(currentWidth + delta, 1, profile.widthMax);
-  if (next === currentWidth) {
-    return clamp(currentWidth + 1, 1, profile.widthMax);
-  }
-  return next;
+  return goalTop;
 }
 
-function carveHorizontal(grid, fromX, toX, centerY, width) {
-  const left = Math.min(fromX, toX);
-  const right = Math.max(fromX, toX);
-  const top = clamp(centerY - Math.floor(width / 2), INNER_MARGIN, GRID_SIZE - INNER_MARGIN - width);
-  carveRect(grid, left, top, right - left + 1, width);
+function pushPoint(path, point) {
+  const last = path[path.length - 1];
+  if (!last || last.x !== point.x || last.y !== point.y) {
+    path.push(point);
+  }
 }
 
-function carveVertical(grid, centerX, fromY, toY, width) {
-  const top = Math.min(fromY, toY);
-  const bottom = Math.max(fromY, toY);
-  const left = clamp(centerX - Math.floor(width / 2), INNER_MARGIN, GRID_SIZE - INNER_MARGIN - width);
-  carveRect(grid, left, top, width, bottom - top + 1);
+function buildCenterline(profile, startPoint, goalPoint, targetLength, randomFn) {
+  const path = [{ ...startPoint }];
+  let current = { ...startPoint };
+  let currentLength = 0;
+  let preferDown = randomFn() > 0.5;
+  const target = Math.max(targetLength, goalPoint.x - startPoint.x + Math.abs(goalPoint.y - startPoint.y));
+
+  while (current.x < goalPoint.x) {
+    const remainingHorizontal = goalPoint.x - current.x;
+    const remainingVertical = Math.abs(goalPoint.y - current.y);
+    const minimumNeeded = remainingHorizontal + remainingVertical;
+    const extraBudget = Math.max(0, target - currentLength - minimumNeeded);
+
+    let horizontalStep = 1;
+    const maxHorizontal = Math.min(profile.horizontalMax, remainingHorizontal);
+    if (extraBudget < remainingHorizontal * 0.45) {
+      horizontalStep = maxHorizontal;
+    } else if (extraBudget > remainingHorizontal * 1.8) {
+      horizontalStep = 1;
+    } else {
+      horizontalStep = randomInt(randomFn, 1, maxHorizontal);
+    }
+
+    for (let step = 0; step < horizontalStep; step += 1) {
+      current = { x: current.x + 1, y: current.y };
+      pushPoint(path, current);
+      currentLength += 1;
+    }
+
+    if (current.x >= goalPoint.x) {
+      break;
+    }
+
+    const remainingHorizontalAfter = goalPoint.x - current.x;
+    const remainingVerticalAfter = Math.abs(goalPoint.y - current.y);
+    const minimumNeededAfter = remainingHorizontalAfter + remainingVerticalAfter;
+    const extraBudgetAfter = Math.max(0, target - currentLength - minimumNeededAfter);
+    const shouldSwing =
+      extraBudgetAfter > 0 &&
+      (randomFn() < profile.verticalBias || remainingVerticalAfter > 0 || extraBudgetAfter > remainingHorizontalAfter);
+
+    if (!shouldSwing) {
+      continue;
+    }
+
+    let direction = preferDown ? 1 : -1;
+    if (!profile.alternating && randomFn() > 0.62) {
+      direction *= -1;
+    }
+
+    let room = direction > 0 ? GRID_SIZE - INNER_MARGIN - 2 - current.y : current.y - (INNER_MARGIN + 1);
+    if (room <= 0) {
+      direction *= -1;
+      room = direction > 0 ? GRID_SIZE - INNER_MARGIN - 2 - current.y : current.y - (INNER_MARGIN + 1);
+    }
+    if (room <= 0) {
+      continue;
+    }
+
+    const suggestedSwing = clamp(
+      Math.round(extraBudgetAfter / Math.max(remainingHorizontalAfter, 1)),
+      profile.swingMin,
+      profile.swingMax
+    );
+    const targetSwing = clamp(
+      suggestedSwing + randomInt(randomFn, -1, 2),
+      profile.swingMin,
+      profile.swingMax
+    );
+    const swing = Math.min(room, targetSwing);
+
+    for (let step = 0; step < swing; step += 1) {
+      current = { x: current.x, y: current.y + direction };
+      pushPoint(path, current);
+      currentLength += 1;
+    }
+
+    if (profile.alternating) {
+      preferDown = !preferDown;
+    } else if (randomFn() > 0.55) {
+      preferDown = !preferDown;
+    }
+  }
+
+  while (current.y !== goalPoint.y) {
+    const direction = goalPoint.y > current.y ? 1 : -1;
+    current = { x: current.x, y: current.y + direction };
+    pushPoint(path, current);
+    currentLength += 1;
+  }
+
+  while (current.x < goalPoint.x) {
+    current = { x: current.x + 1, y: current.y };
+    pushPoint(path, current);
+    currentLength += 1;
+  }
+
+  return { path, actualLength: currentLength };
+}
+
+function buildWidths(profile, path, varianceRate, randomFn) {
+  let currentWidth = profile.widthBase;
+  const widths = [];
+  const changeChance = varianceRate / 100;
+
+  for (let index = 0; index < path.length; index += 1) {
+    if (index > 0 && randomFn() < changeChance * 0.55) {
+      const delta = randomFn() > 0.5 ? 1 : -1;
+      currentWidth = clamp(currentWidth + delta, profile.widthMin, profile.widthMax);
+    }
+    widths.push(currentWidth);
+  }
+
+  return widths;
 }
 
 function buildCourse(styleId, seedValue) {
   const play = getPlayfield();
   const seed = Number(seedValue) || 1;
   const randomFn = mulberry32(seed);
-  const resolvedStyle = chooseResolvedStyle(styleId, randomFn);
+  const resolvedStyle = chooseStyle(styleId, randomFn);
   const profile = STYLE_PROFILES[resolvedStyle];
   const targetLength = Number(pathLengthInput.value);
-  const varianceRate = Number(widthVarianceInput.value);
+  const widthVariance = Number(widthVarianceInput.value);
   const grid = createMatrix(GRID_SIZE, GRID_SIZE, false);
-  const startTop = randomInt(randomFn, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
-  const goalTopBase = randomInt(randomFn, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
-  const startCenterY = startTop + 1;
-  const goalTop = clamp(goalTopBase, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
-  const goalCenterY = goalTop + 1;
+
   const startLeft = INNER_MARGIN;
+  const startTop = randomInt(randomFn, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
   const goalLeft = GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN;
-  const goalCenterX = goalLeft;
-  const gridCellSize = Math.floor(play.width / GRID_SIZE);
-  const offsetX = Math.floor(play.left + (play.width - gridCellSize * GRID_SIZE) * 0.5);
-  const offsetY = Math.floor(play.top + (play.height - gridCellSize * GRID_SIZE) * 0.5);
+  const goalTop = generateGoalTop(randomFn, startTop);
+  const startPoint = { x: startLeft + START_GOAL_SIZE - 1, y: startTop + 1 };
+  const goalPoint = { x: goalLeft, y: goalTop + 1 };
 
   carveRect(grid, startLeft, startTop, START_GOAL_SIZE, START_GOAL_SIZE);
   carveRect(grid, goalLeft, goalTop, START_GOAL_SIZE, START_GOAL_SIZE);
 
-  let currentX = startLeft + START_GOAL_SIZE - 1;
-  let currentY = startCenterY;
-  let currentWidth = profile.widthBase;
-  let currentLength = 0;
-  let direction = randomFn() > 0.5 ? 1 : -1;
+  const { path, actualLength } = buildCenterline(profile, startPoint, goalPoint, targetLength, randomFn);
+  const widths = buildWidths(profile, path, widthVariance, randomFn);
 
-  while (currentX < goalCenterX - 1) {
-    const remainingToGoal = (goalCenterX - currentX) + Math.abs(goalCenterY - currentY);
-    const extraBudget = targetLength - currentLength - remainingToGoal;
-
-    if (extraBudget > 2) {
-      if (profile.alternate) {
-        direction *= -1;
-      } else if (randomFn() > 0.58) {
-        direction *= -1;
-      }
-
-      let room = direction > 0 ? GRID_SIZE - INNER_MARGIN - 1 - currentY : currentY - INNER_MARGIN;
-      if (room <= 0) {
-        direction *= -1;
-        room = direction > 0 ? GRID_SIZE - INNER_MARGIN - 1 - currentY : currentY - INNER_MARGIN;
-      }
-
-      if (room > 0) {
-        const verticalStep = Math.min(
-          randomInt(randomFn, profile.vertical[0], profile.vertical[1]),
-          room,
-          Math.max(2, extraBudget - 1)
-        );
-        currentWidth = nextWidth(currentWidth, profile, varianceRate, randomFn);
-        const nextY = currentY + verticalStep * direction;
-        carveVertical(grid, currentX, currentY, nextY, currentWidth);
-        currentLength += Math.abs(nextY - currentY);
-        currentY = nextY;
-      }
+  path.forEach((point, index) => {
+    const width = widths[index];
+    carveCentered(grid, point, width);
+    if (index > 0) {
+      carveConnection(grid, path[index - 1], point, Math.max(widths[index - 1], width));
     }
+  });
 
-    const remainingX = goalCenterX - currentX;
-    if (remainingX <= 0) {
-      break;
-    }
-    const horizontalStep = Math.min(randomInt(randomFn, profile.horizontal[0], profile.horizontal[1]), remainingX);
-    currentWidth = nextWidth(currentWidth, profile, varianceRate, randomFn);
-    carveHorizontal(grid, currentX, currentX + horizontalStep, currentY, currentWidth);
-    currentX += horizontalStep;
-    currentLength += horizontalStep;
-  }
-
-  if (currentY !== goalCenterY) {
-    currentWidth = nextWidth(currentWidth, profile, varianceRate, randomFn);
-    carveVertical(grid, currentX, currentY, goalCenterY, currentWidth);
-    currentLength += Math.abs(goalCenterY - currentY);
-    currentY = goalCenterY;
-  }
-
-  if (currentX < goalCenterX) {
-    currentWidth = nextWidth(currentWidth, profile, varianceRate, randomFn);
-    carveHorizontal(grid, currentX, goalCenterX, currentY, currentWidth);
-    currentLength += goalCenterX - currentX;
-  }
-
-  const walls = [];
+  const cellSize = Math.floor(play.width / GRID_SIZE);
+  const offsetX = Math.floor(play.left + (play.width - cellSize * GRID_SIZE) * 0.5);
+  const offsetY = Math.floor(play.top + (play.height - cellSize * GRID_SIZE) * 0.5);
   const pathRects = [];
+  const wallRects = [];
+
   for (let row = 0; row < GRID_SIZE; row += 1) {
     for (let col = 0; col < GRID_SIZE; col += 1) {
       const rect = {
-        x: offsetX + col * gridCellSize,
-        y: offsetY + row * gridCellSize,
-        width: gridCellSize,
-        height: gridCellSize
+        x: offsetX + col * cellSize,
+        y: offsetY + row * cellSize,
+        width: cellSize,
+        height: cellSize
       };
       if (grid[row][col]) {
         pathRects.push(rect);
       } else {
-        walls.push(rect);
+        wallRects.push(rect);
       }
     }
   }
@@ -460,31 +556,31 @@ function buildCourse(styleId, seedValue) {
     seed,
     gridSize: GRID_SIZE,
     targetLength,
-    actualLength: currentLength,
-    widthVariance: varianceRate,
-    cellSize: gridCellSize,
+    actualLength,
+    widthVariance,
+    cellSize,
     playfield: {
       left: offsetX,
       top: offsetY,
-      right: offsetX + gridCellSize * GRID_SIZE,
-      bottom: offsetY + gridCellSize * GRID_SIZE,
-      width: gridCellSize * GRID_SIZE,
-      height: gridCellSize * GRID_SIZE
+      right: offsetX + cellSize * GRID_SIZE,
+      bottom: offsetY + cellSize * GRID_SIZE,
+      width: cellSize * GRID_SIZE,
+      height: cellSize * GRID_SIZE
     },
     startRect: {
-      x: offsetX + startLeft * gridCellSize,
-      y: offsetY + startTop * gridCellSize,
-      width: START_GOAL_SIZE * gridCellSize,
-      height: START_GOAL_SIZE * gridCellSize
+      x: offsetX + startLeft * cellSize,
+      y: offsetY + startTop * cellSize,
+      width: START_GOAL_SIZE * cellSize,
+      height: START_GOAL_SIZE * cellSize
     },
     finishRect: {
-      x: offsetX + goalLeft * gridCellSize,
-      y: offsetY + goalTop * gridCellSize,
-      width: START_GOAL_SIZE * gridCellSize,
-      height: START_GOAL_SIZE * gridCellSize
+      x: offsetX + goalLeft * cellSize,
+      y: offsetY + goalTop * cellSize,
+      width: START_GOAL_SIZE * cellSize,
+      height: START_GOAL_SIZE * cellSize
     },
     pathRects,
-    walls
+    wallRects
   };
 }
 
@@ -492,13 +588,14 @@ function updateCourseMeta() {
   if (!state.course) {
     return;
   }
-  courseMeta.textContent = `${state.course.resolvedStyle} / seed ${state.course.seed} / len ${state.course.actualLength}`;
+  courseMeta.textContent = `${state.course.resolvedStyle} / seed ${state.course.seed} / ${state.course.actualLength}`;
 }
 
 function syncCourseJson() {
   if (!state.course) {
     return;
   }
+
   courseJson.value = JSON.stringify(
     {
       preset: state.preset.id,
@@ -514,7 +611,7 @@ function syncCourseJson() {
       startRect: state.course.startRect,
       finishRect: state.course.finishRect,
       pathRects: state.course.pathRects,
-      walls: state.course.walls
+      wallRects: state.course.wallRects
     },
     null,
     2
@@ -549,7 +646,7 @@ function createRacers(count) {
     const size = clamp(state.course.cellSize * 0.52, 10, 18);
     const laneHeight = start.height / count;
     const angle = (Math.random() - 0.5) * 0.24;
-    const speed = clamp(state.course.cellSize * 4.6, 90, 170);
+    const speed = clamp(state.course.cellSize * 4.5, 90, 170);
     return {
       id: index + 1,
       label: `SQ-${String(index + 1).padStart(2, "0")}`,
@@ -705,12 +802,12 @@ function updateRace(deltaSeconds) {
     }
 
     racer.x += racer.vx * dt;
-    for (const wall of state.course.walls) {
+    for (const wall of state.course.wallRects) {
       bounceOnAxis(racer, wall, "x");
     }
 
     racer.y += racer.vy * dt;
-    for (const wall of state.course.walls) {
+    for (const wall of state.course.wallRects) {
       bounceOnAxis(racer, wall, "y");
     }
 
@@ -739,29 +836,29 @@ function updateRace(deltaSeconds) {
   }
 }
 
-function drawCells(rects, fill, stroke) {
-  rects.forEach((rect) => {
-    context.fillStyle = fill;
-    context.fillRect(rect.x, rect.y, rect.width, rect.height);
-    if (stroke) {
-      context.strokeStyle = stroke;
-      context.lineWidth = 1;
-      context.strokeRect(rect.x, rect.y, rect.width, rect.height);
-    }
-  });
-}
-
 function drawBackground() {
   context.fillStyle = COLORS.page;
   context.fillRect(0, 0, canvas.width, canvas.height);
 
-  context.fillStyle = COLORS.stage;
-  context.fillRect(
-    state.course.playfield.left - 12,
-    state.course.playfield.top - 12,
-    state.course.playfield.width + 24,
-    state.course.playfield.height + 24
+  context.shadowColor = COLORS.boardShadow;
+  context.shadowBlur = 24;
+  context.shadowOffsetY = 10;
+  drawRoundedRect(
+    state.course.playfield.left - 14,
+    state.course.playfield.top - 14,
+    state.course.playfield.width + 28,
+    state.course.playfield.height + 28,
+    18,
+    COLORS.stage
   );
+  context.shadowColor = "transparent";
+}
+
+function drawCells(rects, fillStyle) {
+  context.fillStyle = fillStyle;
+  rects.forEach((rect) => {
+    context.fillRect(rect.x, rect.y, rect.width, rect.height);
+  });
 }
 
 function drawStartAndGoal() {
@@ -792,15 +889,16 @@ function drawStartAndGoal() {
 
 function drawTrack() {
   drawBackground();
-  drawCells(state.course.walls, COLORS.blocked, COLORS.blockedStroke);
-  drawCells(state.course.pathRects, COLORS.path, null);
+  drawCells(state.course.wallRects, COLORS.wall);
+  drawCells(state.course.pathRects, COLORS.path);
+
   drawStartAndGoal();
 }
 
 function drawRacers() {
   for (const racer of state.racers) {
     if (racer.trail.length > 1) {
-      context.strokeStyle = `${racer.color}55`;
+      context.strokeStyle = `${racer.color}4a`;
       context.lineWidth = 2.5;
       context.beginPath();
       racer.trail.forEach((point, index) => {
@@ -823,42 +921,28 @@ function drawRacers() {
 }
 
 function drawOverlay() {
-  const topHeight = canvas.height > canvas.width ? 104 : 84;
-  const footerHeight = canvas.height > canvas.width ? 88 : 72;
-  const rankingWidth = 178;
-
-  context.fillStyle = COLORS.overlay;
-  context.fillRect(24, 20, canvas.width - 48, topHeight);
-  context.fillRect(24, canvas.height - footerHeight - 20, canvas.width - 48, footerHeight);
-  context.fillRect(canvas.width - rankingWidth - 24, 136, rankingWidth, 152);
+  drawRoundedRect(22, 18, canvas.width - 44, 84, 18, COLORS.chip);
+  drawRoundedRect(22, canvas.height - 82, canvas.width - 44, 60, 18, COLORS.chip);
 
   context.fillStyle = COLORS.ink;
   context.font = 'bold 26px "Space Grotesk"';
-  context.fillText(state.course.title, 38, 56);
+  context.fillText(state.course.title, 40, 50);
   context.font = '14px "IBM Plex Sans JP"';
-  context.fillStyle = COLORS.softInk;
+  context.fillStyle = COLORS.muted;
   context.fillText(
-    `${state.course.resolvedStyle} / seed ${state.course.seed} / len ${state.course.actualLength}`,
-    38,
-    80
+    `${state.course.resolvedStyle} / seed ${state.course.seed} / target ${state.course.targetLength} / built ${state.course.actualLength}`,
+    40,
+    74
   );
-  context.fillText(
-    `variance ${state.course.widthVariance}% / ${state.preset.label}`,
-    38,
-    100
-  );
+  context.fillText(`${state.preset.label}`, 40, 92);
 
   context.fillStyle = COLORS.ink;
   context.font = 'bold 22px "Space Grotesk"';
-  context.fillText(formatTime(state.elapsed), canvas.width - 122, 58);
+  context.fillText(formatTime(state.elapsed), canvas.width - 112, 52);
   context.font = '14px "IBM Plex Sans JP"';
-  context.fillStyle = COLORS.softInk;
-  context.fillText(`Race ${state.raceIndex}`, canvas.width - 122, 82);
-  context.fillText(`${state.racers.length} racers`, canvas.width - 122, 102);
-
-  context.fillStyle = COLORS.ink;
-  context.font = 'bold 16px "Space Grotesk"';
-  context.fillText("LIVE", canvas.width - rankingWidth, 158);
+  context.fillStyle = COLORS.muted;
+  context.fillText(`${state.racers.length} racers`, canvas.width - 112, 76);
+  context.fillText(`speed ${Number(simSpeedInput.value).toFixed(1)}x`, canvas.width - 112, 94);
 
   const liveOrder = [...state.finishedOrder];
   state.racers
@@ -867,27 +951,22 @@ function drawOverlay() {
     .forEach((racer) => liveOrder.push(racer));
 
   liveOrder.slice(0, 4).forEach((racer, index) => {
-    const y = 186 + index * 28;
+    const x = 40 + index * 120;
     context.fillStyle = racer.color;
-    context.fillRect(canvas.width - rankingWidth, y - 12, 12, 12);
+    context.fillRect(x, canvas.height - 62, 12, 12);
     context.fillStyle = COLORS.ink;
-    context.font = '14px "IBM Plex Sans JP"';
-    context.fillText(`${index + 1}. ${racer.label}`, canvas.width - rankingWidth + 18, y);
+    context.font = '13px "IBM Plex Sans JP"';
+    context.fillText(`${index + 1}. ${racer.label}`, x + 18, canvas.height - 52);
   });
 
-  context.fillStyle = COLORS.ink;
-  context.font = '14px "IBM Plex Sans JP"';
-  context.fillText(`${recordStatus.textContent} / ${recordFormat.textContent}`, 38, canvas.height - 52);
-  context.fillText(
-    `${state.running ? raceStatus.textContent : "READY"} / speed ${Number(simSpeedInput.value).toFixed(1)}x`,
-    38,
-    canvas.height - 32
-  );
+  context.fillStyle = COLORS.muted;
+  context.font = '13px "IBM Plex Sans JP"';
+  context.fillText(`${recordStatus.textContent} / ${recordFormat.textContent}`, canvas.width - 220, canvas.height - 52);
 
   if (recorderState.mediaRecorder?.state === "recording") {
     context.fillStyle = COLORS.accent;
     context.beginPath();
-    context.arc(canvas.width - 70, canvas.height - 46, 7, 0, Math.PI * 2);
+    context.arc(canvas.width - 24, canvas.height - 52, 6, 0, Math.PI * 2);
     context.fill();
   }
 }
@@ -896,6 +975,7 @@ function draw() {
   if (!state.course) {
     return;
   }
+
   drawTrack();
   drawRacers();
   drawOverlay();
@@ -1017,7 +1097,7 @@ function applyLoadedCourse(payload) {
     title: "SHIKAKU RACE",
     requestedStyle: payload.requestedStyle ?? payload.resolvedStyle ?? "manual",
     resolvedStyle: payload.resolvedStyle ?? payload.requestedStyle ?? "manual",
-    seed: Number(payload.seed) || randomSeed(),
+    seed: Number(payload.seed ?? seedInput.value),
     gridSize: payload.gridSize ?? GRID_SIZE,
     targetLength: Number(payload.targetLength ?? pathLengthInput.value),
     actualLength: Number(payload.actualLength ?? pathLengthInput.value),
@@ -1027,7 +1107,7 @@ function applyLoadedCourse(payload) {
     startRect: payload.startRect,
     finishRect: payload.finishRect,
     pathRects: payload.pathRects ?? [],
-    walls: payload.walls ?? []
+    wallRects: payload.wallRects ?? []
   };
 
   seedInput.value = String(state.course.seed);
