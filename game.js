@@ -16,111 +16,69 @@ const podiumList = document.getElementById("podium");
 
 const TRACKS = [
   {
-    id: "switchback",
-    name: "Switchback Run",
-    description: "上下に蛇行する王道コース",
+    id: "mirror-sprint",
+    name: "Mirror Sprint",
+    description: "上下反射が中心のストレート寄りコース",
     walls: [
       { x: 0, y: 0, width: 1200, height: 26 },
       { x: 0, y: 694, width: 1200, height: 26 },
       { x: 0, y: 0, width: 24, height: 720 },
-      { x: 1176, y: 0, width: 24, height: 720 },
-      { x: 220, y: 26, width: 36, height: 430 },
-      { x: 220, y: 560, width: 36, height: 134 },
-      { x: 420, y: 196, width: 36, height: 498 },
-      { x: 420, y: 26, width: 36, height: 78 },
-      { x: 630, y: 26, width: 36, height: 410 },
-      { x: 630, y: 548, width: 36, height: 146 },
-      { x: 850, y: 250, width: 36, height: 444 },
-      { x: 850, y: 26, width: 36, height: 112 }
+      { x: 310, y: 150, width: 210, height: 20 },
+      { x: 540, y: 545, width: 230, height: 20 },
+      { x: 785, y: 225, width: 190, height: 20 }
     ],
-    boosts: [
-      { x: 110, y: 150, width: 80, height: 130, vx: 65, vy: -12 },
-      { x: 510, y: 490, width: 90, height: 110, vx: 56, vy: -18 },
-      { x: 930, y: 120, width: 92, height: 100, vx: 72, vy: 10 }
-    ],
-    checkpoints: [
-      { x: 200, y: 520 },
-      { x: 400, y: 150 },
-      { x: 610, y: 520 },
-      { x: 830, y: 180 },
-      { x: 1060, y: 540 }
-    ],
-    finish: { x: 1090, y: 470, width: 70, height: 160 }
+    finish: { x: 1128, y: 26, width: 48, height: 668 }
   },
   {
-    id: "circuit",
-    name: "Circuit Breaker",
-    description: "中盤で激しく詰まるコース",
+    id: "double-bounce",
+    name: "Double Bounce",
+    description: "二段の横壁で角度が変わるコース",
     walls: [
       { x: 0, y: 0, width: 1200, height: 26 },
       { x: 0, y: 694, width: 1200, height: 26 },
       { x: 0, y: 0, width: 24, height: 720 },
-      { x: 1176, y: 0, width: 24, height: 720 },
-      { x: 180, y: 180, width: 34, height: 514 },
-      { x: 180, y: 26, width: 34, height: 76 },
-      { x: 368, y: 26, width: 34, height: 430 },
-      { x: 368, y: 572, width: 34, height: 122 },
-      { x: 570, y: 186, width: 34, height: 508 },
-      { x: 570, y: 26, width: 34, height: 72 },
-      { x: 780, y: 26, width: 34, height: 450 },
-      { x: 780, y: 586, width: 34, height: 108 },
-      { x: 980, y: 260, width: 34, height: 434 },
-      { x: 980, y: 26, width: 34, height: 136 }
+      { x: 245, y: 500, width: 245, height: 20 },
+      { x: 505, y: 120, width: 245, height: 20 },
+      { x: 770, y: 505, width: 210, height: 20 }
     ],
-    boosts: [
-      { x: 80, y: 520, width: 72, height: 100, vx: 60, vy: 8 },
-      { x: 468, y: 90, width: 82, height: 94, vx: 64, vy: 22 },
-      { x: 870, y: 520, width: 82, height: 88, vx: 66, vy: -18 }
-    ],
-    checkpoints: [
-      { x: 160, y: 140 },
-      { x: 348, y: 520 },
-      { x: 550, y: 150 },
-      { x: 760, y: 540 },
-      { x: 960, y: 190 }
-    ],
-    finish: { x: 1060, y: 90, width: 88, height: 150 }
+    finish: { x: 1128, y: 26, width: 48, height: 668 }
   },
   {
-    id: "crosswind",
-    name: "Crosswind Alley",
-    description: "横揺れが激しい不安定コース",
+    id: "zig-zag-lite",
+    name: "Zig Zag Lite",
+    description: "軽い跳ね返りを何度か挟むコース",
     walls: [
       { x: 0, y: 0, width: 1200, height: 26 },
       { x: 0, y: 694, width: 1200, height: 26 },
       { x: 0, y: 0, width: 24, height: 720 },
-      { x: 1176, y: 0, width: 24, height: 720 },
-      { x: 240, y: 26, width: 36, height: 210 },
-      { x: 240, y: 338, width: 36, height: 356 },
-      { x: 470, y: 170, width: 36, height: 524 },
-      { x: 470, y: 26, width: 36, height: 52 },
-      { x: 690, y: 26, width: 36, height: 210 },
-      { x: 690, y: 336, width: 36, height: 358 },
-      { x: 910, y: 130, width: 36, height: 564 },
-      { x: 910, y: 26, width: 36, height: 28 }
+      { x: 225, y: 200, width: 170, height: 20 },
+      { x: 430, y: 480, width: 185, height: 20 },
+      { x: 650, y: 240, width: 185, height: 20 },
+      { x: 880, y: 530, width: 130, height: 20 }
     ],
-    boosts: [
-      { x: 120, y: 110, width: 80, height: 84, vx: 54, vy: 28 },
-      { x: 570, y: 280, width: 88, height: 110, vx: 72, vy: 0 },
-      { x: 1010, y: 470, width: 92, height: 104, vx: 60, vy: -26 }
-    ],
-    checkpoints: [
-      { x: 220, y: 280 },
-      { x: 450, y: 120 },
-      { x: 670, y: 520 },
-      { x: 890, y: 90 },
-      { x: 1080, y: 420 }
-    ],
-    finish: { x: 1092, y: 360, width: 56, height: 150 }
+    finish: { x: 1128, y: 26, width: 48, height: 668 }
   }
 ];
+
+const RACER_PALETTE = [
+  { color: "#ff6b6b", frequency: 220, wave: "sine" },
+  { color: "#ffd166", frequency: 247, wave: "triangle" },
+  { color: "#06d6a0", frequency: 262, wave: "square" },
+  { color: "#4cc9f0", frequency: 294, wave: "sawtooth" },
+  { color: "#f72585", frequency: 330, wave: "triangle" },
+  { color: "#fb8500", frequency: 392, wave: "square" }
+];
+
+const audioState = {
+  context: null,
+  ready: false
+};
 
 const state = {
   racers: [],
   track: TRACKS[0],
   running: false,
   paused: false,
-  startedAt: 0,
   elapsed: 0,
   finishedOrder: [],
   raceIndex: 0,
@@ -152,71 +110,88 @@ function getCurrentTrack() {
   return TRACKS.find((track) => track.id === trackSelect.value) ?? TRACKS[0];
 }
 
-function createRacers(count) {
-  const colors = [
-    "#ff6b6b",
-    "#ffd166",
-    "#06d6a0",
-    "#4cc9f0",
-    "#f72585",
-    "#fb8500",
-    "#90be6d",
-    "#b8f2e6",
-    "#e9c46a",
-    "#c77dff",
-    "#ffadad",
-    "#5dd39e"
-  ];
+function intersectsRect(entity, rect) {
+  return (
+    entity.x < rect.x + rect.width &&
+    entity.x + entity.size > rect.x &&
+    entity.y < rect.y + rect.height &&
+    entity.y + entity.size > rect.y
+  );
+}
 
+function ensureAudioReady() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    return;
+  }
+
+  if (!audioState.context) {
+    audioState.context = new AudioContextClass();
+  }
+
+  audioState.context.resume();
+  audioState.ready = true;
+}
+
+function playCollisionTone(racer, impactSpeed) {
+  if (!audioState.ready || !audioState.context) {
+    return;
+  }
+
+  const now = audioState.context.currentTime;
+  if (now < racer.nextSoundAt) {
+    return;
+  }
+
+  racer.nextSoundAt = now + 0.11;
+
+  const osc = audioState.context.createOscillator();
+  const overtone = audioState.context.createOscillator();
+  const gain = audioState.context.createGain();
+
+  const intensity = clamp(impactSpeed / 260, 0.08, 0.22);
+  osc.type = racer.wave;
+  overtone.type = "sine";
+  osc.frequency.setValueAtTime(racer.frequency, now);
+  overtone.frequency.setValueAtTime(racer.frequency * 1.5, now);
+
+  gain.gain.setValueAtTime(intensity, now);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+
+  osc.connect(gain);
+  overtone.connect(gain);
+  gain.connect(audioState.context.destination);
+
+  osc.start(now);
+  overtone.start(now);
+  osc.stop(now + 0.14);
+  overtone.stop(now + 0.14);
+}
+
+function createRacers(count) {
   return Array.from({ length: count }, (_, index) => {
-    const column = index % 3;
-    const row = Math.floor(index / 3);
-    const size = 18;
+    const style = RACER_PALETTE[index];
+    const verticalGap = 92;
+    const startY = 110 + index * verticalGap;
+    const launchAngle = randomBetween(-0.18, 0.18);
+    const speed = randomBetween(210, 250);
     return {
       id: index + 1,
       label: `SQ-${String(index + 1).padStart(2, "0")}`,
-      color: colors[index % colors.length],
-      x: 60 + column * 30,
-      y: 110 + row * 26,
-      size,
-      vx: randomBetween(90, 130),
-      vy: randomBetween(-28, 28),
-      checkpointIndex: 0,
+      color: style.color,
+      wave: style.wave,
+      frequency: style.frequency,
+      x: 70,
+      y: clamp(startY, 60, 630),
+      size: 22,
+      vx: Math.cos(launchAngle) * speed,
+      vy: Math.sin(launchAngle) * speed,
       finished: false,
       finishTime: 0,
-      trail: []
+      trail: [],
+      nextSoundAt: 0
     };
   });
-}
-
-function resetRace(autostart = false) {
-  state.track = getCurrentTrack();
-  state.racers = createRacers(Number(racerCountInput.value));
-  state.running = autostart;
-  state.paused = false;
-  state.elapsed = 0;
-  state.finishedOrder = [];
-  state.lastFrame = 0;
-  pauseButton.textContent = "一時停止";
-  updateStatus(autostart ? "進行中" : "待機中");
-  renderPodium();
-  draw();
-}
-
-function startRace() {
-  state.track = getCurrentTrack();
-  state.racers = createRacers(Number(racerCountInput.value));
-  state.running = true;
-  state.paused = false;
-  state.startedAt = performance.now();
-  state.lastFrame = 0;
-  state.elapsed = 0;
-  state.finishedOrder = [];
-  state.raceIndex += 1;
-  raceCount.textContent = String(state.raceIndex);
-  pauseButton.textContent = "一時停止";
-  updateStatus("進行中");
-  renderPodium();
 }
 
 function updateStatus(text) {
@@ -232,129 +207,76 @@ function renderPodium() {
     return;
   }
 
-  state.finishedOrder.slice(0, 5).forEach((racer, index) => {
+  state.finishedOrder.forEach((racer, index) => {
     const item = document.createElement("li");
-    item.textContent = `${index + 1}位 ${racer.label}  ${formatTime(racer.finishTime)}`;
+    item.textContent = `${index + 1}位 ${racer.label} ${formatTime(racer.finishTime)}`;
     item.style.color = racer.color;
     podiumList.append(item);
   });
 }
 
-function intersectsRect(entity, rect) {
-  return (
-    entity.x < rect.x + rect.width &&
-    entity.x + entity.size > rect.x &&
-    entity.y < rect.y + rect.height &&
-    entity.y + entity.size > rect.y
-  );
+function resetRace(autostart = false) {
+  state.track = getCurrentTrack();
+  state.racers = createRacers(Number(racerCountInput.value));
+  state.running = autostart;
+  state.paused = false;
+  state.elapsed = 0;
+  state.finishedOrder = [];
+  state.lastFrame = 0;
+  raceTimer.textContent = "0.0s";
+  pauseButton.textContent = "一時停止";
+  updateStatus(autostart ? "進行中" : "待機中");
+  renderPodium();
+  draw();
 }
 
-function resolveWallCollision(racer, wall, axis) {
+function startRace() {
+  ensureAudioReady();
+  state.track = getCurrentTrack();
+  state.racers = createRacers(Number(racerCountInput.value));
+  state.running = true;
+  state.paused = false;
+  state.elapsed = 0;
+  state.finishedOrder = [];
+  state.lastFrame = 0;
+  state.raceIndex += 1;
+  raceCount.textContent = String(state.raceIndex);
+  pauseButton.textContent = "一時停止";
+  updateStatus("進行中");
+  renderPodium();
+}
+
+function bounceOnAxis(racer, wall, axis) {
   if (!intersectsRect(racer, wall)) {
-    return;
+    return false;
   }
 
+  const restitution = 0.98;
   if (axis === "x") {
     if (racer.vx > 0) {
       racer.x = wall.x - racer.size;
     } else {
       racer.x = wall.x + wall.width;
     }
-    racer.vx *= -0.86;
+    const impactSpeed = Math.abs(racer.vx);
+    racer.vx *= -restitution;
+    playCollisionTone(racer, impactSpeed);
   } else {
     if (racer.vy > 0) {
       racer.y = wall.y - racer.size;
     } else {
       racer.y = wall.y + wall.height;
     }
-    racer.vy *= -0.86;
+    const impactSpeed = Math.abs(racer.vy);
+    racer.vy *= -restitution;
+    playCollisionTone(racer, impactSpeed);
   }
-}
 
-function applyCheckpointSteering(racer, deltaSeconds) {
-  const checkpoints = state.track.checkpoints;
-  const checkpoint =
-    checkpoints[racer.checkpointIndex] ??
-    {
-      x: state.track.finish.x + state.track.finish.width / 2,
-      y: state.track.finish.y + state.track.finish.height / 2
-    };
-
-  const centerX = racer.x + racer.size / 2;
-  const centerY = racer.y + racer.size / 2;
-  const dx = checkpoint.x - centerX;
-  const dy = checkpoint.y - centerY;
-  const distance = Math.max(Math.hypot(dx, dy), 1);
-  const pull = racer.checkpointIndex >= checkpoints.length ? 48 : 34;
-
-  racer.vx += (dx / distance) * pull * deltaSeconds;
-  racer.vy += (dy / distance) * pull * deltaSeconds;
-
-  if (distance < 56 && racer.checkpointIndex < checkpoints.length) {
-    racer.checkpointIndex += 1;
-  }
-}
-
-function applyBoosts(racer) {
-  for (const boost of state.track.boosts) {
-    if (intersectsRect(racer, boost)) {
-      racer.vx += boost.vx * 0.06;
-      racer.vy += boost.vy * 0.06;
-    }
-  }
-}
-
-function handleRacerCollisions() {
-  const racers = state.racers;
-
-  for (let i = 0; i < racers.length; i += 1) {
-    const a = racers[i];
-    if (a.finished) {
-      continue;
-    }
-
-    for (let j = i + 1; j < racers.length; j += 1) {
-      const b = racers[j];
-      if (b.finished) {
-        continue;
-      }
-
-      if (
-        a.x < b.x + b.size &&
-        a.x + a.size > b.x &&
-        a.y < b.y + b.size &&
-        a.y + a.size > b.y
-      ) {
-        const dx = (a.x + a.size / 2) - (b.x + b.size / 2);
-        const dy = (a.y + a.size / 2) - (b.y + b.size / 2);
-        const overlapX = (a.size + b.size) / 2 - Math.abs(dx);
-        const overlapY = (a.size + b.size) / 2 - Math.abs(dy);
-
-        if (overlapX < overlapY) {
-          const direction = dx < 0 ? -1 : 1;
-          a.x += overlapX * 0.5 * direction;
-          b.x -= overlapX * 0.5 * direction;
-          const nextVxA = b.vx * 0.92;
-          const nextVxB = a.vx * 0.92;
-          a.vx = nextVxA;
-          b.vx = nextVxB;
-        } else {
-          const direction = dy < 0 ? -1 : 1;
-          a.y += overlapY * 0.5 * direction;
-          b.y -= overlapY * 0.5 * direction;
-          const nextVyA = b.vy * 0.92;
-          const nextVyB = a.vy * 0.92;
-          a.vy = nextVyA;
-          b.vy = nextVyB;
-        }
-      }
-    }
-  }
+  return true;
 }
 
 function updateRace(deltaSeconds) {
-  const speedFactor = Number(simSpeedInput.value);
-  const dt = deltaSeconds * speedFactor;
+  const dt = deltaSeconds * Number(simSpeedInput.value);
   state.elapsed += dt;
   raceTimer.textContent = formatTime(state.elapsed);
 
@@ -363,51 +285,33 @@ function updateRace(deltaSeconds) {
       continue;
     }
 
-    applyCheckpointSteering(racer, dt);
-
-    racer.vx *= 0.996;
-    racer.vy *= 0.996;
-
-    racer.vx = clamp(racer.vx, -160, 240);
-    racer.vy = clamp(racer.vy, -180, 180);
-
     racer.x += racer.vx * dt;
     for (const wall of state.track.walls) {
-      resolveWallCollision(racer, wall, "x");
+      bounceOnAxis(racer, wall, "x");
     }
 
     racer.y += racer.vy * dt;
     for (const wall of state.track.walls) {
-      resolveWallCollision(racer, wall, "y");
+      bounceOnAxis(racer, wall, "y");
     }
 
-    racer.x = clamp(racer.x, 28, 1150 - racer.size);
-    racer.y = clamp(racer.y, 28, 680 - racer.size);
-
-    applyBoosts(racer);
+    racer.x = clamp(racer.x, 24, 1176 - racer.size);
+    racer.y = clamp(racer.y, 26, 694 - racer.size);
 
     racer.trail.push({ x: racer.x + racer.size / 2, y: racer.y + racer.size / 2 });
-    if (racer.trail.length > 14) {
+    if (racer.trail.length > 20) {
       racer.trail.shift();
     }
 
-    if (
-      racer.checkpointIndex >= state.track.checkpoints.length &&
-      intersectsRect(racer, state.track.finish)
-    ) {
+    if (intersectsRect(racer, state.track.finish)) {
       racer.finished = true;
       racer.finishTime = state.elapsed;
       state.finishedOrder.push(racer);
       renderPodium();
-      if (state.finishedOrder.length === 1) {
-        updateStatus("リーダー確定");
-      }
     }
   }
 
-  handleRacerCollisions();
-
-  if (state.finishedOrder.length === state.racers.length) {
+  if (state.finishedOrder.length === state.racers.length && state.racers.length > 0) {
     state.running = false;
     updateStatus("全員ゴール");
   }
@@ -434,44 +338,24 @@ function drawTrack() {
     context.stroke();
   }
 
-  for (const boost of state.track.boosts) {
-    const gradient = context.createLinearGradient(boost.x, boost.y, boost.x + boost.width, boost.y);
-    gradient.addColorStop(0, "rgba(73,220,177,0.22)");
-    gradient.addColorStop(1, "rgba(73,220,177,0.52)");
-    context.fillStyle = gradient;
-    context.fillRect(boost.x, boost.y, boost.width, boost.height);
-  }
-
   const finish = state.track.finish;
-  context.fillStyle = "rgba(125, 211, 252, 0.28)";
+  context.fillStyle = "rgba(125, 211, 252, 0.22)";
   context.fillRect(finish.x, finish.y, finish.width, finish.height);
+  context.fillStyle = "rgba(125, 211, 252, 0.52)";
+  for (let y = finish.y; y < finish.y + finish.height; y += 28) {
+    context.fillRect(finish.x, y, finish.width, 14);
+  }
 
   context.fillStyle = "#243648";
   for (const wall of state.track.walls) {
     context.fillRect(wall.x, wall.y, wall.width, wall.height);
   }
-
-  context.strokeStyle = "rgba(255, 212, 59, 0.5)";
-  context.setLineDash([10, 10]);
-  context.lineWidth = 2;
-  context.beginPath();
-  for (let i = 0; i < state.track.checkpoints.length; i += 1) {
-    const point = state.track.checkpoints[i];
-    if (i === 0) {
-      context.moveTo(point.x, point.y);
-    } else {
-      context.lineTo(point.x, point.y);
-    }
-  }
-  context.lineTo(finish.x + finish.width / 2, finish.y + finish.height / 2);
-  context.stroke();
-  context.setLineDash([]);
 }
 
 function drawRacers() {
   for (const racer of state.racers) {
     if (racer.trail.length > 1) {
-      context.strokeStyle = `${racer.color}55`;
+      context.strokeStyle = `${racer.color}44`;
       context.lineWidth = 3;
       context.beginPath();
       racer.trail.forEach((point, index) => {
@@ -486,29 +370,30 @@ function drawRacers() {
 
     context.save();
     context.translate(racer.x + racer.size / 2, racer.y + racer.size / 2);
-    context.rotate(Math.atan2(racer.vy, racer.vx) * 0.2);
+    context.rotate(Math.atan2(racer.vy, racer.vx));
     context.fillStyle = racer.color;
     context.fillRect(-racer.size / 2, -racer.size / 2, racer.size, racer.size);
     context.restore();
 
     if (!racer.finished) {
-      context.fillStyle = "rgba(255,255,255,0.88)";
+      context.fillStyle = "rgba(255,255,255,0.9)";
       context.font = "11px 'Space Grotesk'";
-      context.fillText(racer.id, racer.x + 4, racer.y - 4);
+      context.fillText(racer.id, racer.x + 5, racer.y - 5);
     }
   }
 }
 
 function drawHud() {
   context.fillStyle = "rgba(0,0,0,0.32)";
-  context.fillRect(32, 30, 260, 88);
+  context.fillRect(32, 30, 310, 92);
 
   context.fillStyle = "#f4efe7";
   context.font = "700 24px 'Space Grotesk'";
   context.fillText(state.track.name, 48, 64);
   context.font = "15px 'IBM Plex Sans JP'";
   context.fillStyle = "#cbbfa8";
-  context.fillText(`Racers ${state.racers.length} / Speed ${Number(simSpeedInput.value).toFixed(1)}x`, 48, 95);
+  context.fillText(`Racers ${state.racers.length} / Speed ${Number(simSpeedInput.value).toFixed(1)}x`, 48, 92);
+  context.fillText("Straight + Bounce Physics", 48, 114);
 }
 
 function draw() {
@@ -539,6 +424,7 @@ resetRace(false);
 
 racerCountInput.addEventListener("input", () => {
   racerCountValue.textContent = racerCountInput.value;
+  resetRace(false);
 });
 
 simSpeedInput.addEventListener("input", () => {

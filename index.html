@@ -23,7 +23,7 @@
           <p class="eyebrow">AUTONOMOUS CHAOS / PUBLIC PLAYGROUND</p>
           <h1>Square Race Arena</h1>
           <p class="hero-text">
-            何も操作しない。四角を放り込む。あとは壁・加速帯・衝突が勝敗を決めます。
+            何も操作しない。四角を放り込む。あとは直進と反射だけで、誰が先に右端のゴールへ届くかを見届けます。
           </p>
         </div>
         <div class="hero-stats" id="statusPanel">
@@ -48,8 +48,8 @@
             <h2>セットアップ</h2>
             <label class="field">
               <span>レーサー数</span>
-              <input id="racerCount" type="range" min="4" max="36" step="1" value="14" />
-              <strong id="racerCountValue">14</strong>
+              <input id="racerCount" type="range" min="2" max="6" step="1" value="4" />
+              <strong id="racerCountValue">4</strong>
             </label>
             <label class="field">
               <span>トラック</span>
@@ -70,11 +70,10 @@
           <div class="panel-card">
             <h2>遊び方</h2>
             <p>
-              1回のレースは自動進行です。レーサー数とトラックを決めてスタートするだけで、
-              四角たちがチェックポイントを目指して暴れます。
+              1回のレースは自動進行です。四角は基本的にまっすぐ進み、壁やバンパーに当たると反射してそのまま走り続けます。
             </p>
             <p>
-              加速帯に乗ると一気に前へ。混雑すると弾き飛ばされるので、数を増やすほど結果が荒れます。
+              ゴールは右端のフィニッシュ帯です。音はスタート後に有効になり、壁に当たるたびにレーサーごとに違う音が鳴ります。
             </p>
           </div>
 
@@ -92,8 +91,7 @@
             <div class="overlay-tag">LIVE SIMULATION</div>
           </div>
           <div class="legend-row">
-            <span><i class="legend-swatch wall"></i> 壁</span>
-            <span><i class="legend-swatch boost"></i> 加速帯</span>
+            <span><i class="legend-swatch wall"></i> 壁 / バンパー</span>
             <span><i class="legend-swatch finish"></i> ゴール</span>
           </div>
         </section>
