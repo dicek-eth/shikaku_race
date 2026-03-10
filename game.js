@@ -8,10 +8,10 @@ const racerCountValue = document.getElementById("racerCountValue");
 const simSpeedInput = document.getElementById("simSpeed");
 const simSpeedValue = document.getElementById("simSpeedValue");
 const autoCycleInput = document.getElementById("autoCycle");
-const turnCountInput = document.getElementById("turnCount");
-const turnCountValue = document.getElementById("turnCountValue");
-const corridorWidthInput = document.getElementById("corridorWidth");
-const corridorWidthValue = document.getElementById("corridorWidthValue");
+const pathLengthInput = document.getElementById("pathLength");
+const pathLengthValue = document.getElementById("pathLengthValue");
+const widthVarianceInput = document.getElementById("widthVariance");
+const widthVarianceValue = document.getElementById("widthVarianceValue");
 const seedInput = document.getElementById("seedInput");
 const randomSeedButton = document.getElementById("randomSeedButton");
 const generateCourseButton = document.getElementById("generateCourseButton");
@@ -30,6 +30,10 @@ const recordStatus = document.getElementById("recordStatus");
 const recordFormat = document.getElementById("recordFormat");
 const courseMeta = document.getElementById("courseMeta");
 const podiumList = document.getElementById("podium");
+
+const GRID_SIZE = 28;
+const START_GOAL_SIZE = 3;
+const INNER_MARGIN = 1;
 
 const OUTPUT_PRESETS = [
   {
@@ -61,50 +65,55 @@ const STYLE_IDS = COURSE_STYLES.filter((style) => style.id !== "variety").map((s
 const STYLE_PROFILES = {
   snake: {
     horizontal: [2, 4],
-    vertical: [2, 5],
+    vertical: [3, 7],
+    widthBase: 2,
+    widthMax: 4,
     alternate: true
   },
   ladder: {
     horizontal: [1, 3],
-    vertical: [3, 6],
+    vertical: [5, 9],
+    widthBase: 2,
+    widthMax: 3,
     alternate: true
   },
   canyon: {
     horizontal: [3, 5],
-    vertical: [2, 4],
+    vertical: [2, 5],
+    widthBase: 3,
+    widthMax: 5,
     alternate: false
   },
   zigzag: {
     horizontal: [1, 2],
-    vertical: [2, 5],
+    vertical: [2, 6],
+    widthBase: 1,
+    widthMax: 3,
     alternate: true
   }
 };
 
 const COLORS = {
-  page: "#efe8db",
-  stage: "#bcb59f",
-  blocked: "#e9e6dc",
-  blockedStroke: "#9c9686",
-  path: "#5864ff",
-  pathShade: "#4b55dd",
-  start: "#31c48d",
+  page: "#f6efe3",
+  stage: "#c4bda9",
+  blocked: "#ece8de",
+  blockedStroke: "#9e9889",
+  path: "#5967ff",
+  start: "#2fc38e",
   finishLight: "#ffffff",
-  finishDark: "#111111",
-  frame: "#2d2d2d",
-  ink: "#1e1e1e",
-  softInk: "#6d675d",
+  finishDark: "#121212",
+  ink: "#24211c",
+  softInk: "#706a5e",
   accent: "#ff7a45",
-  accent2: "#ffe08a",
-  overlay: "rgba(255, 250, 242, 0.92)"
+  overlay: "rgba(255, 250, 243, 0.94)"
 };
 
 const RACER_PALETTE = [
   { color: "#ff7a45", frequency: 220, wave: "sine" },
-  { color: "#31c48d", frequency: 247, wave: "triangle" },
-  { color: "#5b7cfa", frequency: 262, wave: "square" },
+  { color: "#2fc38e", frequency: 247, wave: "triangle" },
+  { color: "#5d78ff", frequency: 262, wave: "square" },
   { color: "#ffd166", frequency: 294, wave: "sawtooth" },
-  { color: "#d66bff", frequency: 330, wave: "triangle" },
+  { color: "#d46bff", frequency: 330, wave: "triangle" },
   { color: "#fb5f86", frequency: 392, wave: "square" }
 ];
 
@@ -273,16 +282,17 @@ function setCanvasPreset(presetId) {
 
 function getPlayfield() {
   const portrait = canvas.height > canvas.width;
-  const topInset = portrait ? 140 : 108;
-  const bottomInset = portrait ? 112 : 92;
-  const sideInset = portrait ? 52 : 56;
+  const topInset = portrait ? 136 : 90;
+  const bottomInset = portrait ? 106 : 82;
+  const sideInset = 38;
+  const size = Math.min(canvas.width - sideInset * 2, canvas.height - topInset - bottomInset);
   return {
-    left: sideInset,
+    left: Math.floor((canvas.width - size) * 0.5),
     top: topInset,
-    right: canvas.width - sideInset,
-    bottom: canvas.height - bottomInset,
-    width: canvas.width - sideInset * 2,
-    height: canvas.height - topInset - bottomInset
+    right: Math.floor((canvas.width - size) * 0.5) + size,
+    bottom: topInset + size,
+    width: size,
+    height: size
   };
 }
 
@@ -291,124 +301,149 @@ function createMatrix(rows, cols, value = false) {
 }
 
 function carveRect(grid, x, y, width, height) {
-  for (let row = y; row < y + height; row += 1) {
-    for (let col = x; col < x + width; col += 1) {
-      if (grid[row] && typeof grid[row][col] !== "undefined") {
-        grid[row][col] = true;
-      }
+  const rows = grid.length;
+  const cols = grid[0].length;
+  const minX = clamp(x, 0, cols - 1);
+  const minY = clamp(y, 0, rows - 1);
+  const maxX = clamp(x + width - 1, 0, cols - 1);
+  const maxY = clamp(y + height - 1, 0, rows - 1);
+
+  for (let row = minY; row <= maxY; row += 1) {
+    for (let col = minX; col <= maxX; col += 1) {
+      grid[row][col] = true;
     }
   }
 }
 
-function cellKey(col, row) {
-  return `${col}:${row}`;
+function chooseResolvedStyle(styleId, randomFn) {
+  if (styleId !== "variety") {
+    return styleId;
+  }
+  return STYLE_IDS[randomInt(randomFn, 0, STYLE_IDS.length - 1)];
+}
+
+function nextWidth(currentWidth, profile, varianceRate, randomFn) {
+  const chance = varianceRate / 100;
+  if (randomFn() > chance) {
+    return currentWidth;
+  }
+
+  const delta = randomFn() > 0.5 ? 1 : -1;
+  const next = clamp(currentWidth + delta, 1, profile.widthMax);
+  if (next === currentWidth) {
+    return clamp(currentWidth + 1, 1, profile.widthMax);
+  }
+  return next;
+}
+
+function carveHorizontal(grid, fromX, toX, centerY, width) {
+  const left = Math.min(fromX, toX);
+  const right = Math.max(fromX, toX);
+  const top = clamp(centerY - Math.floor(width / 2), INNER_MARGIN, GRID_SIZE - INNER_MARGIN - width);
+  carveRect(grid, left, top, right - left + 1, width);
+}
+
+function carveVertical(grid, centerX, fromY, toY, width) {
+  const top = Math.min(fromY, toY);
+  const bottom = Math.max(fromY, toY);
+  const left = clamp(centerX - Math.floor(width / 2), INNER_MARGIN, GRID_SIZE - INNER_MARGIN - width);
+  carveRect(grid, left, top, width, bottom - top + 1);
 }
 
 function buildCourse(styleId, seedValue) {
   const play = getPlayfield();
   const seed = Number(seedValue) || 1;
   const randomFn = mulberry32(seed);
-  const resolvedStyle =
-    styleId === "variety"
-      ? STYLE_IDS[randomInt(randomFn, 0, STYLE_IDS.length - 1)]
-      : styleId;
+  const resolvedStyle = chooseResolvedStyle(styleId, randomFn);
   const profile = STYLE_PROFILES[resolvedStyle];
-  const portrait = canvas.height > canvas.width;
-  const rows = portrait ? 24 : 14;
-  const cols = 14;
-  const cellSize = Math.floor(Math.min(play.width / cols, play.height / rows));
-  const gridWidth = cols * cellSize;
-  const gridHeight = rows * cellSize;
-  const offsetX = Math.floor(play.left + (play.width - gridWidth) * 0.5);
-  const offsetY = Math.floor(play.top + (play.height - gridHeight) * 0.5);
-  const corridorWidth = Number(corridorWidthInput.value);
-  const turnCount = Number(turnCountInput.value);
-  const squareSize = corridorWidth + 1;
-  const grid = createMatrix(rows, cols, false);
-  const pathCells = new Set();
+  const targetLength = Number(pathLengthInput.value);
+  const varianceRate = Number(widthVarianceInput.value);
+  const grid = createMatrix(GRID_SIZE, GRID_SIZE, false);
+  const startTop = randomInt(randomFn, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
+  const goalTopBase = randomInt(randomFn, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
+  const startCenterY = startTop + 1;
+  const goalTop = clamp(goalTopBase, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
+  const goalCenterY = goalTop + 1;
+  const startLeft = INNER_MARGIN;
+  const goalLeft = GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN;
+  const goalCenterX = goalLeft;
+  const gridCellSize = Math.floor(play.width / GRID_SIZE);
+  const offsetX = Math.floor(play.left + (play.width - gridCellSize * GRID_SIZE) * 0.5);
+  const offsetY = Math.floor(play.top + (play.height - gridCellSize * GRID_SIZE) * 0.5);
 
-  function rememberRect(x, y, width, height) {
-    for (let row = y; row < y + height; row += 1) {
-      for (let col = x; col < x + width; col += 1) {
-        pathCells.add(cellKey(col, row));
-      }
-    }
-  }
+  carveRect(grid, startLeft, startTop, START_GOAL_SIZE, START_GOAL_SIZE);
+  carveRect(grid, goalLeft, goalTop, START_GOAL_SIZE, START_GOAL_SIZE);
 
-  let startY = randomInt(randomFn, 1, rows - squareSize - 1);
-  carveRect(grid, 1, startY, squareSize, squareSize);
-  rememberRect(1, startY, squareSize, squareSize);
-
-  let currentX = 2;
-  let currentY = startY + Math.floor((squareSize - corridorWidth) * 0.5);
-  carveRect(grid, currentX, currentY, corridorWidth, corridorWidth);
-  rememberRect(currentX, currentY, corridorWidth, corridorWidth);
-
+  let currentX = startLeft + START_GOAL_SIZE - 1;
+  let currentY = startCenterY;
+  let currentWidth = profile.widthBase;
+  let currentLength = 0;
   let direction = randomFn() > 0.5 ? 1 : -1;
 
-  for (let turn = 0; turn < turnCount; turn += 1) {
-    const remaining = cols - squareSize - 2 - currentX;
-    if (remaining <= 1) {
-      break;
-    }
+  while (currentX < goalCenterX - 1) {
+    const remainingToGoal = (goalCenterX - currentX) + Math.abs(goalCenterY - currentY);
+    const extraBudget = targetLength - currentLength - remainingToGoal;
 
-    const horizontalStep = Math.min(randomInt(randomFn, profile.horizontal[0], profile.horizontal[1]), remaining);
-    carveRect(grid, currentX, currentY, horizontalStep + corridorWidth, corridorWidth);
-    rememberRect(currentX, currentY, horizontalStep + corridorWidth, corridorWidth);
-    currentX += horizontalStep;
-
-    const verticalRoomUp = currentY - 1;
-    const verticalRoomDown = rows - corridorWidth - 1 - currentY;
-    if (verticalRoomUp <= 0 && verticalRoomDown <= 0) {
-      continue;
-    }
-
-    if (!profile.alternate) {
-      direction = verticalRoomDown > verticalRoomUp ? 1 : -1;
-      if (randomFn() > 0.55) {
+    if (extraBudget > 2) {
+      if (profile.alternate) {
+        direction *= -1;
+      } else if (randomFn() > 0.58) {
         direction *= -1;
       }
-    } else {
-      direction *= -1;
+
+      let room = direction > 0 ? GRID_SIZE - INNER_MARGIN - 1 - currentY : currentY - INNER_MARGIN;
+      if (room <= 0) {
+        direction *= -1;
+        room = direction > 0 ? GRID_SIZE - INNER_MARGIN - 1 - currentY : currentY - INNER_MARGIN;
+      }
+
+      if (room > 0) {
+        const verticalStep = Math.min(
+          randomInt(randomFn, profile.vertical[0], profile.vertical[1]),
+          room,
+          Math.max(2, extraBudget - 1)
+        );
+        currentWidth = nextWidth(currentWidth, profile, varianceRate, randomFn);
+        const nextY = currentY + verticalStep * direction;
+        carveVertical(grid, currentX, currentY, nextY, currentWidth);
+        currentLength += Math.abs(nextY - currentY);
+        currentY = nextY;
+      }
     }
 
-    let maxShift = direction > 0 ? verticalRoomDown : verticalRoomUp;
-    if (maxShift <= 0) {
-      direction *= -1;
-      maxShift = direction > 0 ? verticalRoomDown : verticalRoomUp;
+    const remainingX = goalCenterX - currentX;
+    if (remainingX <= 0) {
+      break;
     }
-    if (maxShift <= 0) {
-      continue;
-    }
-
-    const verticalStep = Math.min(randomInt(randomFn, profile.vertical[0], profile.vertical[1]), maxShift);
-    const verticalY = direction > 0 ? currentY : currentY - verticalStep;
-    carveRect(grid, currentX, verticalY, corridorWidth, verticalStep + corridorWidth);
-    rememberRect(currentX, verticalY, corridorWidth, verticalStep + corridorWidth);
-    currentY += verticalStep * direction;
+    const horizontalStep = Math.min(randomInt(randomFn, profile.horizontal[0], profile.horizontal[1]), remainingX);
+    currentWidth = nextWidth(currentWidth, profile, varianceRate, randomFn);
+    carveHorizontal(grid, currentX, currentX + horizontalStep, currentY, currentWidth);
+    currentX += horizontalStep;
+    currentLength += horizontalStep;
   }
 
-  const goalX = cols - squareSize - 1;
-  const goalY = clamp(
-    currentY - Math.floor((squareSize - corridorWidth) * 0.5),
-    1,
-    rows - squareSize - 1
-  );
-  const finalStep = Math.max(goalX - currentX, 0);
-  carveRect(grid, currentX, currentY, finalStep + corridorWidth, corridorWidth);
-  rememberRect(currentX, currentY, finalStep + corridorWidth, corridorWidth);
-  carveRect(grid, goalX, goalY, squareSize, squareSize);
-  rememberRect(goalX, goalY, squareSize, squareSize);
+  if (currentY !== goalCenterY) {
+    currentWidth = nextWidth(currentWidth, profile, varianceRate, randomFn);
+    carveVertical(grid, currentX, currentY, goalCenterY, currentWidth);
+    currentLength += Math.abs(goalCenterY - currentY);
+    currentY = goalCenterY;
+  }
+
+  if (currentX < goalCenterX) {
+    currentWidth = nextWidth(currentWidth, profile, varianceRate, randomFn);
+    carveHorizontal(grid, currentX, goalCenterX, currentY, currentWidth);
+    currentLength += goalCenterX - currentX;
+  }
 
   const walls = [];
   const pathRects = [];
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
+  for (let row = 0; row < GRID_SIZE; row += 1) {
+    for (let col = 0; col < GRID_SIZE; col += 1) {
       const rect = {
-        x: offsetX + col * cellSize,
-        y: offsetY + row * cellSize,
-        width: cellSize,
-        height: cellSize
+        x: offsetX + col * gridCellSize,
+        y: offsetY + row * gridCellSize,
+        width: gridCellSize,
+        height: gridCellSize
       };
       if (grid[row][col]) {
         pathRects.push(rect);
@@ -418,41 +453,36 @@ function buildCourse(styleId, seedValue) {
     }
   }
 
-  const startRect = {
-    x: offsetX + cellSize,
-    y: offsetY + startY * cellSize,
-    width: squareSize * cellSize,
-    height: squareSize * cellSize
-  };
-  const finishRect = {
-    x: offsetX + goalX * cellSize,
-    y: offsetY + goalY * cellSize,
-    width: squareSize * cellSize,
-    height: squareSize * cellSize
-  };
-
   return {
     title: "SHIKAKU RACE",
     requestedStyle: styleId,
     resolvedStyle,
     seed,
-    turnCount,
-    corridorWidth,
-    rows,
-    cols,
-    cellSize,
-    offsetX,
-    offsetY,
+    gridSize: GRID_SIZE,
+    targetLength,
+    actualLength: currentLength,
+    widthVariance: varianceRate,
+    cellSize: gridCellSize,
     playfield: {
       left: offsetX,
       top: offsetY,
-      right: offsetX + gridWidth,
-      bottom: offsetY + gridHeight,
-      width: gridWidth,
-      height: gridHeight
+      right: offsetX + gridCellSize * GRID_SIZE,
+      bottom: offsetY + gridCellSize * GRID_SIZE,
+      width: gridCellSize * GRID_SIZE,
+      height: gridCellSize * GRID_SIZE
     },
-    startRect,
-    finishRect,
+    startRect: {
+      x: offsetX + startLeft * gridCellSize,
+      y: offsetY + startTop * gridCellSize,
+      width: START_GOAL_SIZE * gridCellSize,
+      height: START_GOAL_SIZE * gridCellSize
+    },
+    finishRect: {
+      x: offsetX + goalLeft * gridCellSize,
+      y: offsetY + goalTop * gridCellSize,
+      width: START_GOAL_SIZE * gridCellSize,
+      height: START_GOAL_SIZE * gridCellSize
+    },
     pathRects,
     walls
   };
@@ -462,7 +492,7 @@ function updateCourseMeta() {
   if (!state.course) {
     return;
   }
-  courseMeta.textContent = `${state.course.resolvedStyle} / seed ${state.course.seed} / ${state.preset.stageLabel}`;
+  courseMeta.textContent = `${state.course.resolvedStyle} / seed ${state.course.seed} / len ${state.course.actualLength}`;
 }
 
 function syncCourseJson() {
@@ -475,13 +505,12 @@ function syncCourseJson() {
       requestedStyle: state.course.requestedStyle,
       resolvedStyle: state.course.resolvedStyle,
       seed: state.course.seed,
-      turnCount: state.course.turnCount,
-      corridorWidth: state.course.corridorWidth,
-      rows: state.course.rows,
-      cols: state.course.cols,
+      gridSize: state.course.gridSize,
+      targetLength: state.course.targetLength,
+      actualLength: state.course.actualLength,
+      widthVariance: state.course.widthVariance,
       cellSize: state.course.cellSize,
-      offsetX: state.course.offsetX,
-      offsetY: state.course.offsetY,
+      playfield: state.course.playfield,
       startRect: state.course.startRect,
       finishRect: state.course.finishRect,
       pathRects: state.course.pathRects,
@@ -517,17 +546,17 @@ function createRacers(count) {
   const start = state.course.startRect;
   return Array.from({ length: count }, (_, index) => {
     const palette = RACER_PALETTE[index];
-    const size = clamp(state.course.cellSize * 0.46, 14, 22);
+    const size = clamp(state.course.cellSize * 0.52, 10, 18);
     const laneHeight = start.height / count;
-    const angle = (Math.random() - 0.5) * 0.28;
-    const speed = clamp(state.course.cellSize * 4.4, 120, 210);
+    const angle = (Math.random() - 0.5) * 0.24;
+    const speed = clamp(state.course.cellSize * 4.6, 90, 170);
     return {
       id: index + 1,
       label: `SQ-${String(index + 1).padStart(2, "0")}`,
       color: palette.color,
       wave: palette.wave,
       frequency: palette.frequency,
-      x: start.x + 8 + (index % 2) * 12,
+      x: start.x + 6 + (index % 2) * 8,
       y: start.y + laneHeight * index + laneHeight * 0.5 - size * 0.5,
       size,
       vx: Math.cos(angle) * speed,
@@ -601,20 +630,12 @@ function bounceOnAxis(racer, wall, axis) {
 
   const restitution = 0.985;
   if (axis === "x") {
-    if (racer.vx > 0) {
-      racer.x = wall.x - racer.size;
-    } else {
-      racer.x = wall.x + wall.width;
-    }
+    racer.x = racer.vx > 0 ? wall.x - racer.size : wall.x + wall.width;
     const impactSpeed = Math.abs(racer.vx);
     racer.vx *= -restitution;
     playCollisionTone(racer, impactSpeed);
   } else {
-    if (racer.vy > 0) {
-      racer.y = wall.y - racer.size;
-    } else {
-      racer.y = wall.y + wall.height;
-    }
+    racer.y = racer.vy > 0 ? wall.y - racer.size : wall.y + wall.height;
     const impactSpeed = Math.abs(racer.vy);
     racer.vy *= -restitution;
     playCollisionTone(racer, impactSpeed);
@@ -718,19 +739,6 @@ function updateRace(deltaSeconds) {
   }
 }
 
-function drawBackground() {
-  context.fillStyle = COLORS.page;
-  context.fillRect(0, 0, canvas.width, canvas.height);
-
-  context.fillStyle = COLORS.stage;
-  context.fillRect(
-    state.course.playfield.left - 20,
-    state.course.playfield.top - 20,
-    state.course.playfield.width + 40,
-    state.course.playfield.height + 40
-  );
-}
-
 function drawCells(rects, fill, stroke) {
   rects.forEach((rect) => {
     context.fillStyle = fill;
@@ -743,51 +751,49 @@ function drawCells(rects, fill, stroke) {
   });
 }
 
+function drawBackground() {
+  context.fillStyle = COLORS.page;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  context.fillStyle = COLORS.stage;
+  context.fillRect(
+    state.course.playfield.left - 12,
+    state.course.playfield.top - 12,
+    state.course.playfield.width + 24,
+    state.course.playfield.height + 24
+  );
+}
+
 function drawStartAndGoal() {
   const start = state.course.startRect;
   const finish = state.course.finishRect;
 
   context.fillStyle = COLORS.start;
   context.fillRect(start.x, start.y, start.width, start.height);
-  context.strokeStyle = COLORS.frame;
+  context.strokeStyle = COLORS.ink;
   context.lineWidth = 2;
   context.strokeRect(start.x, start.y, start.width, start.height);
-  context.fillStyle = COLORS.ink;
-  context.font = `${Math.max(12, state.course.cellSize * 0.34)}px "Space Grotesk"`;
-  context.fillText("START", start.x + 8, start.y + start.height - 8);
 
   context.fillStyle = COLORS.finishLight;
   context.fillRect(finish.x, finish.y, finish.width, finish.height);
-  context.strokeStyle = COLORS.frame;
+  context.strokeStyle = COLORS.ink;
   context.lineWidth = 2;
   context.strokeRect(finish.x, finish.y, finish.width, finish.height);
 
-  const checker = Math.max(4, Math.floor(finish.width / 6));
+  const checker = 3;
+  const size = finish.width / checker;
   for (let row = 0; row < checker; row += 1) {
     for (let col = 0; col < checker; col += 1) {
       context.fillStyle = (row + col) % 2 === 0 ? COLORS.finishDark : COLORS.finishLight;
-      const size = finish.width / checker;
       context.fillRect(finish.x + col * size, finish.y + row * size, size, size);
     }
   }
-
-  context.fillStyle = COLORS.finishLight;
-  context.fillRect(finish.x + 8, finish.y + finish.height - 24, finish.width - 16, 18);
-  context.fillStyle = COLORS.ink;
-  context.font = `${Math.max(12, state.course.cellSize * 0.32)}px "Space Grotesk"`;
-  context.fillText("GOAL", finish.x + 12, finish.y + finish.height - 10);
 }
 
 function drawTrack() {
   drawBackground();
   drawCells(state.course.walls, COLORS.blocked, COLORS.blockedStroke);
   drawCells(state.course.pathRects, COLORS.path, null);
-
-  context.fillStyle = COLORS.pathShade;
-  state.course.pathRects.forEach((rect) => {
-    context.fillRect(rect.x, rect.y, rect.width, 4);
-  });
-
   drawStartAndGoal();
 }
 
@@ -795,7 +801,7 @@ function drawRacers() {
   for (const racer of state.racers) {
     if (racer.trail.length > 1) {
       context.strokeStyle = `${racer.color}55`;
-      context.lineWidth = 3;
+      context.lineWidth = 2.5;
       context.beginPath();
       racer.trail.forEach((point, index) => {
         if (index === 0) {
@@ -817,35 +823,42 @@ function drawRacers() {
 }
 
 function drawOverlay() {
-  const topWidth = canvas.width - 56;
-  const topHeight = canvas.height > canvas.width ? 108 : 92;
-  const footerHeight = canvas.height > canvas.width ? 94 : 84;
-  const rankingWidth = canvas.height > canvas.width ? 170 : 160;
+  const topHeight = canvas.height > canvas.width ? 104 : 84;
+  const footerHeight = canvas.height > canvas.width ? 88 : 72;
+  const rankingWidth = 178;
 
   context.fillStyle = COLORS.overlay;
-  context.fillRect(28, 24, topWidth, topHeight);
-  context.fillRect(28, canvas.height - footerHeight - 24, topWidth, footerHeight);
-  context.fillRect(canvas.width - rankingWidth - 28, 146, rankingWidth, 156);
+  context.fillRect(24, 20, canvas.width - 48, topHeight);
+  context.fillRect(24, canvas.height - footerHeight - 20, canvas.width - 48, footerHeight);
+  context.fillRect(canvas.width - rankingWidth - 24, 136, rankingWidth, 152);
 
   context.fillStyle = COLORS.ink;
-  context.font = 'bold 28px "Space Grotesk"';
-  context.fillText(state.course.title, 44, 62);
-  context.font = '16px "IBM Plex Sans JP"';
-  context.fillStyle = COLORS.softInk;
-  context.fillText(`Style ${state.course.resolvedStyle.toUpperCase()} / Seed ${state.course.seed}`, 44, 88);
-  context.fillText(state.preset.label, 44, 110);
-
-  context.fillStyle = COLORS.ink;
-  context.font = 'bold 24px "Space Grotesk"';
-  context.fillText(formatTime(state.elapsed), canvas.width - 140, 62);
+  context.font = 'bold 26px "Space Grotesk"';
+  context.fillText(state.course.title, 38, 56);
   context.font = '14px "IBM Plex Sans JP"';
   context.fillStyle = COLORS.softInk;
-  context.fillText(`Race ${state.raceIndex}`, canvas.width - 140, 86);
-  context.fillText(`${state.racers.length} racers`, canvas.width - 140, 106);
+  context.fillText(
+    `${state.course.resolvedStyle} / seed ${state.course.seed} / len ${state.course.actualLength}`,
+    38,
+    80
+  );
+  context.fillText(
+    `variance ${state.course.widthVariance}% / ${state.preset.label}`,
+    38,
+    100
+  );
+
+  context.fillStyle = COLORS.ink;
+  context.font = 'bold 22px "Space Grotesk"';
+  context.fillText(formatTime(state.elapsed), canvas.width - 122, 58);
+  context.font = '14px "IBM Plex Sans JP"';
+  context.fillStyle = COLORS.softInk;
+  context.fillText(`Race ${state.raceIndex}`, canvas.width - 122, 82);
+  context.fillText(`${state.racers.length} racers`, canvas.width - 122, 102);
 
   context.fillStyle = COLORS.ink;
   context.font = 'bold 16px "Space Grotesk"';
-  context.fillText("LIVE", canvas.width - rankingWidth - 12, 170);
+  context.fillText("LIVE", canvas.width - rankingWidth, 158);
 
   const liveOrder = [...state.finishedOrder];
   state.racers
@@ -854,7 +867,7 @@ function drawOverlay() {
     .forEach((racer) => liveOrder.push(racer));
 
   liveOrder.slice(0, 4).forEach((racer, index) => {
-    const y = 196 + index * 28;
+    const y = 186 + index * 28;
     context.fillStyle = racer.color;
     context.fillRect(canvas.width - rankingWidth, y - 12, 12, 12);
     context.fillStyle = COLORS.ink;
@@ -864,21 +877,17 @@ function drawOverlay() {
 
   context.fillStyle = COLORS.ink;
   context.font = '14px "IBM Plex Sans JP"';
-  context.fillText(
-    `${recordStatus.textContent} / ${recordFormat.textContent}`,
-    44,
-    canvas.height - 64
-  );
+  context.fillText(`${recordStatus.textContent} / ${recordFormat.textContent}`, 38, canvas.height - 52);
   context.fillText(
     `${state.running ? raceStatus.textContent : "READY"} / speed ${Number(simSpeedInput.value).toFixed(1)}x`,
-    44,
-    canvas.height - 42
+    38,
+    canvas.height - 32
   );
 
   if (recorderState.mediaRecorder?.state === "recording") {
     context.fillStyle = COLORS.accent;
     context.beginPath();
-    context.arc(canvas.width - 72, canvas.height - 56, 8, 0, Math.PI * 2);
+    context.arc(canvas.width - 70, canvas.height - 46, 7, 0, Math.PI * 2);
     context.fill();
   }
 }
@@ -999,36 +1008,28 @@ function applyLoadedCourse(payload) {
   outputPresetSelect.value = presetId;
   setCanvasPreset(presetId);
 
+  pathLengthInput.value = String(payload.targetLength ?? pathLengthInput.value);
+  pathLengthValue.textContent = pathLengthInput.value;
+  widthVarianceInput.value = String(payload.widthVariance ?? widthVarianceInput.value);
+  widthVarianceValue.textContent = `${widthVarianceInput.value}%`;
+
   state.course = {
     title: "SHIKAKU RACE",
     requestedStyle: payload.requestedStyle ?? payload.resolvedStyle ?? "manual",
     resolvedStyle: payload.resolvedStyle ?? payload.requestedStyle ?? "manual",
     seed: Number(payload.seed) || randomSeed(),
-    turnCount: Number(payload.turnCount) || Number(turnCountInput.value),
-    corridorWidth: Number(payload.corridorWidth) || Number(corridorWidthInput.value),
-    rows: payload.rows,
-    cols: payload.cols,
+    gridSize: payload.gridSize ?? GRID_SIZE,
+    targetLength: Number(payload.targetLength ?? pathLengthInput.value),
+    actualLength: Number(payload.actualLength ?? pathLengthInput.value),
+    widthVariance: Number(payload.widthVariance ?? widthVarianceInput.value),
     cellSize: payload.cellSize,
-    offsetX: payload.offsetX,
-    offsetY: payload.offsetY,
-    playfield: {
-      left: payload.offsetX,
-      top: payload.offsetY,
-      right: payload.offsetX + payload.cols * payload.cellSize,
-      bottom: payload.offsetY + payload.rows * payload.cellSize,
-      width: payload.cols * payload.cellSize,
-      height: payload.rows * payload.cellSize
-    },
+    playfield: payload.playfield,
     startRect: payload.startRect,
     finishRect: payload.finishRect,
     pathRects: payload.pathRects ?? [],
     walls: payload.walls ?? []
   };
 
-  turnCountInput.value = String(state.course.turnCount);
-  turnCountValue.textContent = String(state.course.turnCount);
-  corridorWidthInput.value = String(state.course.corridorWidth);
-  corridorWidthValue.textContent = String(state.course.corridorWidth);
   seedInput.value = String(state.course.seed);
   updateCourseMeta();
   syncCourseJson();
@@ -1058,12 +1059,12 @@ simSpeedInput.addEventListener("input", () => {
   simSpeedValue.textContent = `${Number(simSpeedInput.value).toFixed(1)}x`;
 });
 
-turnCountInput.addEventListener("input", () => {
-  turnCountValue.textContent = turnCountInput.value;
+pathLengthInput.addEventListener("input", () => {
+  pathLengthValue.textContent = pathLengthInput.value;
 });
 
-corridorWidthInput.addEventListener("input", () => {
-  corridorWidthValue.textContent = corridorWidthInput.value;
+widthVarianceInput.addEventListener("input", () => {
+  widthVarianceValue.textContent = `${widthVarianceInput.value}%`;
 });
 
 outputPresetSelect.addEventListener("change", () => {

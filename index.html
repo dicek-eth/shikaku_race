@@ -78,14 +78,14 @@
               <select id="courseStyle"></select>
             </label>
             <label class="field">
-              <span>曲がり数</span>
-              <input id="turnCount" type="range" min="3" max="14" step="1" value="7" />
-              <strong id="turnCountValue">7</strong>
+              <span>道の長さ</span>
+              <input id="pathLength" type="range" min="48" max="220" step="4" value="120" />
+              <strong id="pathLengthValue">120</strong>
             </label>
             <label class="field">
-              <span>道幅</span>
-              <input id="corridorWidth" type="range" min="2" max="4" step="1" value="2" />
-              <strong id="corridorWidthValue">2</strong>
+              <span>幅の変化率</span>
+              <input id="widthVariance" type="range" min="0" max="100" step="5" value="35" />
+              <strong id="widthVarianceValue">35%</strong>
             </label>
             <label class="field">
               <span>Seed</span>
@@ -103,12 +103,12 @@
           <div class="panel-card">
             <h2>Course Notes</h2>
             <p class="panel-note">
-              コースは「障害物を並べる」方式ではなく、曲がりくねった通路を自動生成します。
-              スタートとゴールは正方形で、右端のゴールには白黒チェッカーを表示します。
+              コースは `28 x 28` グリッド上に自動生成します。スタートとゴールは `3 x 3`
+              の正方形で、ゴールには白黒チェッカーを表示します。
             </p>
             <p class="panel-note">
-              Seed を変えると同じスタイルでも別の通路になります。動画量産用に、
-              自動でレースを回しながら録画できます。
+              道の長さでルート全体のボリュームを、幅の変化率で通路の太さの揺れを決めます。
+              Seed を変えると同じスタイルでも別ルートになります。
             </p>
           </div>
 
