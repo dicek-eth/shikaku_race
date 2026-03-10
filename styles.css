@@ -1,15 +1,15 @@
 :root {
-  --bg: #09111a;
-  --bg-soft: #101c29;
-  --panel: rgba(10, 19, 29, 0.84);
-  --panel-border: rgba(255, 255, 255, 0.1);
-  --text: #f8f3eb;
-  --muted: #cdbda3;
-  --accent: #ff8c42;
-  --accent-2: #f4d35e;
+  --bg: #f5efe5;
+  --bg-soft: #e7dece;
+  --panel: rgba(255, 251, 245, 0.88);
+  --panel-border: rgba(59, 52, 43, 0.12);
+  --text: #2a251e;
+  --muted: #6c655a;
+  --accent: #ff7a45;
+  --accent-2: #ffe08a;
   --danger: #ff5d73;
-  --good: #4dd7a8;
-  --shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+  --good: #31c48d;
+  --shadow: 0 22px 60px rgba(73, 62, 46, 0.14);
 }
 
 * {
@@ -26,9 +26,9 @@ body {
   font-family: "IBM Plex Sans JP", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(255, 140, 66, 0.22), transparent 22%),
-    radial-gradient(circle at top right, rgba(77, 215, 168, 0.14), transparent 18%),
-    linear-gradient(145deg, #050b11, #12202d 52%, #091019);
+    radial-gradient(circle at top left, rgba(255, 122, 69, 0.18), transparent 20%),
+    radial-gradient(circle at top right, rgba(88, 100, 255, 0.12), transparent 18%),
+    linear-gradient(145deg, #f6f0e7, #ece3d2 58%, #e8decc);
 }
 
 button,
@@ -86,7 +86,7 @@ h1 {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(10px);
 }
 
 .stat-card {
@@ -166,8 +166,8 @@ input[type="number"],
 textarea {
   width: 100%;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(59, 52, 43, 0.12);
+  background: rgba(255, 255, 255, 0.72);
   color: var(--text);
 }
 
@@ -204,7 +204,7 @@ button {
   border-radius: 999px;
   padding: 12px 14px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(63, 57, 49, 0.08);
   cursor: pointer;
   transition:
     transform 120ms ease,
@@ -213,7 +213,7 @@ button {
 
 button:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(63, 57, 49, 0.14);
 }
 
 button.primary {
@@ -240,7 +240,7 @@ canvas {
   max-height: 78vh;
   margin: 0 auto;
   border-radius: 24px;
-  background: linear-gradient(180deg, #111826, #0b121b);
+  background: linear-gradient(180deg, #c8c1b0, #bdb49f);
 }
 
 .overlay-tag {
@@ -249,8 +249,8 @@ canvas {
   right: 28px;
   padding: 8px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.38);
+  border: 1px solid rgba(59, 52, 43, 0.12);
+  background: rgba(255, 250, 242, 0.9);
   font-family: "Space Grotesk", sans-serif;
   font-size: 0.74rem;
   letter-spacing: 0.14em;

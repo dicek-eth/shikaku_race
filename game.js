@@ -8,18 +8,14 @@ const racerCountValue = document.getElementById("racerCountValue");
 const simSpeedInput = document.getElementById("simSpeed");
 const simSpeedValue = document.getElementById("simSpeedValue");
 const autoCycleInput = document.getElementById("autoCycle");
-const obstacleCountInput = document.getElementById("obstacleCount");
-const obstacleCountValue = document.getElementById("obstacleCountValue");
+const turnCountInput = document.getElementById("turnCount");
+const turnCountValue = document.getElementById("turnCountValue");
+const corridorWidthInput = document.getElementById("corridorWidth");
+const corridorWidthValue = document.getElementById("corridorWidthValue");
 const seedInput = document.getElementById("seedInput");
 const randomSeedButton = document.getElementById("randomSeedButton");
 const generateCourseButton = document.getElementById("generateCourseButton");
 const shuffleStyleButton = document.getElementById("shuffleStyleButton");
-const editorModeInput = document.getElementById("editorMode");
-const bumperOrientationSelect = document.getElementById("bumperOrientation");
-const bumperLengthInput = document.getElementById("bumperLength");
-const bumperLengthValue = document.getElementById("bumperLengthValue");
-const undoBumperButton = document.getElementById("undoBumperButton");
-const clearBumpersButton = document.getElementById("clearBumpersButton");
 const startButton = document.getElementById("startButton");
 const pauseButton = document.getElementById("pauseButton");
 const resetButton = document.getElementById("resetButton");
@@ -38,47 +34,78 @@ const podiumList = document.getElementById("podium");
 const OUTPUT_PRESETS = [
   {
     id: "shorts",
-    label: "YouTube Shorts / Reels 1080 x 1920",
-    width: 1080,
-    height: 1920,
+    label: "YouTube Shorts 720 x 1280",
+    width: 720,
+    height: 1280,
     stageLabel: "9:16"
   },
   {
-    id: "landscape",
-    label: "YouTube Landscape 1920 x 1080",
-    width: 1920,
-    height: 1080,
-    stageLabel: "16:9"
-  },
-  {
     id: "square",
-    label: "Instagram Square 1080 x 1080",
-    width: 1080,
-    height: 1080,
+    label: "Instagram Square 720 x 720",
+    width: 720,
+    height: 720,
     stageLabel: "1:1"
   }
 ];
 
 const COURSE_STYLES = [
   { id: "variety", label: "Variety Mix" },
-  { id: "switchback", label: "Switchback" },
-  { id: "mirror", label: "Mirror Bounce" },
-  { id: "pinball", label: "Pinball Cluster" },
-  { id: "gates", label: "Gate Runner" },
-  { id: "wave", label: "Wave Drift" }
+  { id: "snake", label: "Snake Channel" },
+  { id: "ladder", label: "Ladder Drop" },
+  { id: "canyon", label: "Wide Canyon" },
+  { id: "zigzag", label: "Tight Zigzag" }
 ];
 
-const RESOLVED_STYLE_IDS = COURSE_STYLES.filter((style) => style.id !== "variety").map(
-  (style) => style.id
-);
+const STYLE_IDS = COURSE_STYLES.filter((style) => style.id !== "variety").map((style) => style.id);
+
+const STYLE_PROFILES = {
+  snake: {
+    horizontal: [2, 4],
+    vertical: [2, 5],
+    alternate: true
+  },
+  ladder: {
+    horizontal: [1, 3],
+    vertical: [3, 6],
+    alternate: true
+  },
+  canyon: {
+    horizontal: [3, 5],
+    vertical: [2, 4],
+    alternate: false
+  },
+  zigzag: {
+    horizontal: [1, 2],
+    vertical: [2, 5],
+    alternate: true
+  }
+};
+
+const COLORS = {
+  page: "#efe8db",
+  stage: "#bcb59f",
+  blocked: "#e9e6dc",
+  blockedStroke: "#9c9686",
+  path: "#5864ff",
+  pathShade: "#4b55dd",
+  start: "#31c48d",
+  finishLight: "#ffffff",
+  finishDark: "#111111",
+  frame: "#2d2d2d",
+  ink: "#1e1e1e",
+  softInk: "#6d675d",
+  accent: "#ff7a45",
+  accent2: "#ffe08a",
+  overlay: "rgba(255, 250, 242, 0.92)"
+};
 
 const RACER_PALETTE = [
-  { color: "#ff6b6b", frequency: 220, wave: "sine" },
-  { color: "#ffd166", frequency: 247, wave: "triangle" },
-  { color: "#06d6a0", frequency: 262, wave: "square" },
-  { color: "#4cc9f0", frequency: 294, wave: "sawtooth" },
-  { color: "#f72585", frequency: 330, wave: "triangle" },
-  { color: "#fb8500", frequency: 392, wave: "square" }
+  { color: "#ff7a45", frequency: 220, wave: "sine" },
+  { color: "#31c48d", frequency: 247, wave: "triangle" },
+  { color: "#5b7cfa", frequency: 262, wave: "square" },
+  { color: "#ffd166", frequency: 294, wave: "sawtooth" },
+  { color: "#d66bff", frequency: 330, wave: "triangle" },
+  { color: "#fb5f86", frequency: 392, wave: "square" }
 ];
 
 const audioState = {
@@ -98,7 +125,6 @@ const recorderState = {
 const state = {
   preset: OUTPUT_PRESETS[0],
   course: null,
-  customWalls: [],
   racers: [],
   running: false,
   paused: false,
@@ -119,20 +145,20 @@ function mulberry32(seed) {
   };
 }
 
-function randomBetween(randomFn, min, max) {
-  return randomFn() * (max - min) + min;
-}
-
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function formatTime(seconds) {
-  return `${seconds.toFixed(1)}s`;
+function randomInt(randomFn, min, max) {
+  return Math.floor(randomFn() * (max - min + 1)) + min;
 }
 
-function getScale() {
-  return Math.min(canvas.width / 1080, canvas.height / 1080);
+function randomSeed() {
+  return Math.floor(Math.random() * 999999);
+}
+
+function formatTime(seconds) {
+  return `${seconds.toFixed(1)}s`;
 }
 
 function getRecordingProfile() {
@@ -153,11 +179,6 @@ function getRecordingProfile() {
     },
     {
       mimeType: "video/webm;codecs=vp9,opus",
-      extension: "webm",
-      label: "WebM fallback"
-    },
-    {
-      mimeType: "video/webm;codecs=vp8,opus",
       extension: "webm",
       label: "WebM fallback"
     },
@@ -207,12 +228,12 @@ function playCollisionTone(racer, impactSpeed) {
   const primary = audioState.context.createOscillator();
   const overtone = audioState.context.createOscillator();
   const gain = audioState.context.createGain();
-  const level = clamp(impactSpeed / 420, 0.06, 0.2);
+  const level = clamp(impactSpeed / 320, 0.05, 0.18);
 
   primary.type = racer.wave;
   overtone.type = "sine";
   primary.frequency.setValueAtTime(racer.frequency, now);
-  overtone.frequency.setValueAtTime(racer.frequency * 1.498, now);
+  overtone.frequency.setValueAtTime(racer.frequency * 1.5, now);
 
   gain.gain.setValueAtTime(level, now);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
@@ -250,163 +271,198 @@ function setCanvasPreset(presetId) {
   canvas.height = preset.height;
 }
 
-function randomSeed() {
-  return Math.floor(Math.random() * 999999);
-}
-
-function getPlayfield(width, height) {
-  const portrait = height > width;
-  const topInset = portrait ? height * 0.12 : height * 0.11;
-  const bottomInset = portrait ? height * 0.1 : height * 0.1;
-  const sideInset = width * 0.055;
+function getPlayfield() {
+  const portrait = canvas.height > canvas.width;
+  const topInset = portrait ? 140 : 108;
+  const bottomInset = portrait ? 112 : 92;
+  const sideInset = portrait ? 52 : 56;
   return {
     left: sideInset,
-    right: width - sideInset,
     top: topInset,
-    bottom: height - bottomInset,
-    width: width - sideInset * 2,
-    height: height - topInset - bottomInset
+    right: canvas.width - sideInset,
+    bottom: canvas.height - bottomInset,
+    width: canvas.width - sideInset * 2,
+    height: canvas.height - topInset - bottomInset
   };
 }
 
+function createMatrix(rows, cols, value = false) {
+  return Array.from({ length: rows }, () => Array.from({ length: cols }, () => value));
+}
+
+function carveRect(grid, x, y, width, height) {
+  for (let row = y; row < y + height; row += 1) {
+    for (let col = x; col < x + width; col += 1) {
+      if (grid[row] && typeof grid[row][col] !== "undefined") {
+        grid[row][col] = true;
+      }
+    }
+  }
+}
+
+function cellKey(col, row) {
+  return `${col}:${row}`;
+}
+
 function buildCourse(styleId, seedValue) {
+  const play = getPlayfield();
   const seed = Number(seedValue) || 1;
   const randomFn = mulberry32(seed);
-  const chosenStyle =
+  const resolvedStyle =
     styleId === "variety"
-      ? RESOLVED_STYLE_IDS[Math.floor(randomFn() * RESOLVED_STYLE_IDS.length)]
+      ? STYLE_IDS[randomInt(randomFn, 0, STYLE_IDS.length - 1)]
       : styleId;
-  const play = getPlayfield(canvas.width, canvas.height);
-  const scale = getScale();
-  const thickness = clamp(18 * scale, 14, 26);
-  const obstacleCount = Number(obstacleCountInput.value);
-  const finishHeight = randomBetween(randomFn, play.height * 0.18, play.height * 0.27);
-  const finishY = randomBetween(randomFn, play.top + 80 * scale, play.bottom - finishHeight - 80 * scale);
-  const gateWidth = 28 * scale;
-  const walls = [];
+  const profile = STYLE_PROFILES[resolvedStyle];
+  const portrait = canvas.height > canvas.width;
+  const rows = portrait ? 24 : 14;
+  const cols = 14;
+  const cellSize = Math.floor(Math.min(play.width / cols, play.height / rows));
+  const gridWidth = cols * cellSize;
+  const gridHeight = rows * cellSize;
+  const offsetX = Math.floor(play.left + (play.width - gridWidth) * 0.5);
+  const offsetY = Math.floor(play.top + (play.height - gridHeight) * 0.5);
+  const corridorWidth = Number(corridorWidthInput.value);
+  const turnCount = Number(turnCountInput.value);
+  const squareSize = corridorWidth + 1;
+  const grid = createMatrix(rows, cols, false);
+  const pathCells = new Set();
 
-  function addWall(x, y, width, height) {
-    walls.push({
-      x: clamp(x, play.left - 24 * scale, play.right - width - 12 * scale),
-      y: clamp(y, play.top, play.bottom - height),
-      width,
-      height
-    });
-  }
-
-  function addHorizontal(x, y, width) {
-    addWall(x, y, clamp(width, 80 * scale, play.width * 0.42), thickness);
-  }
-
-  function addVertical(x, y, height) {
-    addWall(x, y, thickness, clamp(height, 80 * scale, play.height * 0.46));
-  }
-
-  walls.push({ x: play.left, y: play.top - thickness, width: play.width + gateWidth, height: thickness });
-  walls.push({ x: play.left, y: play.bottom, width: play.width + gateWidth, height: thickness });
-  walls.push({ x: play.left - thickness, y: play.top, width: thickness, height: play.height });
-  walls.push({ x: play.right, y: play.top, width: gateWidth, height: finishY - play.top });
-  walls.push({
-    x: play.right,
-    y: finishY + finishHeight,
-    width: gateWidth,
-    height: play.bottom - (finishY + finishHeight)
-  });
-
-  if (chosenStyle === "switchback") {
-    for (let index = 0; index < obstacleCount; index += 1) {
-      const progress = index / Math.max(obstacleCount - 1, 1);
-      const width = randomBetween(randomFn, play.width * 0.16, play.width * 0.3);
-      const x = play.left + play.width * (0.08 + progress * 0.68);
-      const y =
-        index % 2 === 0
-          ? randomBetween(randomFn, play.top + 100 * scale, play.top + play.height * 0.34)
-          : randomBetween(randomFn, play.top + play.height * 0.64, play.bottom - 90 * scale);
-      addHorizontal(x, y, width);
-    }
-  }
-
-  if (chosenStyle === "mirror") {
-    for (let index = 0; index < obstacleCount; index += 1) {
-      const x = play.left + play.width * (0.08 + (index / Math.max(obstacleCount, 1)) * 0.72);
-      const width = randomBetween(randomFn, play.width * 0.14, play.width * 0.24);
-      const y = randomBetween(randomFn, play.top + 120 * scale, play.top + play.height * 0.28);
-      addHorizontal(x, y, width);
-      addHorizontal(x + randomBetween(randomFn, -40 * scale, 40 * scale), play.bottom - (y - play.top) - thickness, width);
-    }
-  }
-
-  if (chosenStyle === "pinball") {
-    for (let index = 0; index < obstacleCount; index += 1) {
-      const orientation = randomFn() > 0.42 ? "horizontal" : "vertical";
-      const x = randomBetween(randomFn, play.left + 120 * scale, play.right - 240 * scale);
-      const y = randomBetween(randomFn, play.top + 90 * scale, play.bottom - 180 * scale);
-      if (orientation === "horizontal") {
-        addHorizontal(x, y, randomBetween(randomFn, play.width * 0.1, play.width * 0.22));
-      } else {
-        addVertical(x, y, randomBetween(randomFn, play.height * 0.12, play.height * 0.26));
+  function rememberRect(x, y, width, height) {
+    for (let row = y; row < y + height; row += 1) {
+      for (let col = x; col < x + width; col += 1) {
+        pathCells.add(cellKey(col, row));
       }
     }
   }
 
-  if (chosenStyle === "gates") {
-    for (let index = 0; index < obstacleCount; index += 1) {
-      const progress = index / Math.max(obstacleCount - 1, 1);
-      const x = play.left + play.width * (0.12 + progress * 0.68);
-      const openingCenter = play.top + play.height * (0.28 + randomFn() * 0.44);
-      const openingSize = randomBetween(randomFn, play.height * 0.18, play.height * 0.28);
-      addVertical(x, play.top + 40 * scale, openingCenter - play.top - openingSize * 0.5);
-      addVertical(
-        x,
-        openingCenter + openingSize * 0.5,
-        play.bottom - openingCenter - openingSize * 0.5 - 36 * scale
-      );
+  let startY = randomInt(randomFn, 1, rows - squareSize - 1);
+  carveRect(grid, 1, startY, squareSize, squareSize);
+  rememberRect(1, startY, squareSize, squareSize);
+
+  let currentX = 2;
+  let currentY = startY + Math.floor((squareSize - corridorWidth) * 0.5);
+  carveRect(grid, currentX, currentY, corridorWidth, corridorWidth);
+  rememberRect(currentX, currentY, corridorWidth, corridorWidth);
+
+  let direction = randomFn() > 0.5 ? 1 : -1;
+
+  for (let turn = 0; turn < turnCount; turn += 1) {
+    const remaining = cols - squareSize - 2 - currentX;
+    if (remaining <= 1) {
+      break;
+    }
+
+    const horizontalStep = Math.min(randomInt(randomFn, profile.horizontal[0], profile.horizontal[1]), remaining);
+    carveRect(grid, currentX, currentY, horizontalStep + corridorWidth, corridorWidth);
+    rememberRect(currentX, currentY, horizontalStep + corridorWidth, corridorWidth);
+    currentX += horizontalStep;
+
+    const verticalRoomUp = currentY - 1;
+    const verticalRoomDown = rows - corridorWidth - 1 - currentY;
+    if (verticalRoomUp <= 0 && verticalRoomDown <= 0) {
+      continue;
+    }
+
+    if (!profile.alternate) {
+      direction = verticalRoomDown > verticalRoomUp ? 1 : -1;
+      if (randomFn() > 0.55) {
+        direction *= -1;
+      }
+    } else {
+      direction *= -1;
+    }
+
+    let maxShift = direction > 0 ? verticalRoomDown : verticalRoomUp;
+    if (maxShift <= 0) {
+      direction *= -1;
+      maxShift = direction > 0 ? verticalRoomDown : verticalRoomUp;
+    }
+    if (maxShift <= 0) {
+      continue;
+    }
+
+    const verticalStep = Math.min(randomInt(randomFn, profile.vertical[0], profile.vertical[1]), maxShift);
+    const verticalY = direction > 0 ? currentY : currentY - verticalStep;
+    carveRect(grid, currentX, verticalY, corridorWidth, verticalStep + corridorWidth);
+    rememberRect(currentX, verticalY, corridorWidth, verticalStep + corridorWidth);
+    currentY += verticalStep * direction;
+  }
+
+  const goalX = cols - squareSize - 1;
+  const goalY = clamp(
+    currentY - Math.floor((squareSize - corridorWidth) * 0.5),
+    1,
+    rows - squareSize - 1
+  );
+  const finalStep = Math.max(goalX - currentX, 0);
+  carveRect(grid, currentX, currentY, finalStep + corridorWidth, corridorWidth);
+  rememberRect(currentX, currentY, finalStep + corridorWidth, corridorWidth);
+  carveRect(grid, goalX, goalY, squareSize, squareSize);
+  rememberRect(goalX, goalY, squareSize, squareSize);
+
+  const walls = [];
+  const pathRects = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const rect = {
+        x: offsetX + col * cellSize,
+        y: offsetY + row * cellSize,
+        width: cellSize,
+        height: cellSize
+      };
+      if (grid[row][col]) {
+        pathRects.push(rect);
+      } else {
+        walls.push(rect);
+      }
     }
   }
 
-  if (chosenStyle === "wave") {
-    const phase = randomBetween(randomFn, 0, Math.PI * 2);
-    for (let index = 0; index < obstacleCount; index += 1) {
-      const progress = index / Math.max(obstacleCount - 1, 1);
-      const x = play.left + play.width * (0.08 + progress * 0.72);
-      const center = play.top + play.height * 0.5;
-      const amplitude = play.height * 0.24;
-      const y = center + Math.sin(progress * Math.PI * 2.4 + phase) * amplitude;
-      addHorizontal(x, y, randomBetween(randomFn, play.width * 0.12, play.width * 0.22));
-    }
-  }
+  const startRect = {
+    x: offsetX + cellSize,
+    y: offsetY + startY * cellSize,
+    width: squareSize * cellSize,
+    height: squareSize * cellSize
+  };
+  const finishRect = {
+    x: offsetX + goalX * cellSize,
+    y: offsetY + goalY * cellSize,
+    width: squareSize * cellSize,
+    height: squareSize * cellSize
+  };
 
   return {
     title: "SHIKAKU RACE",
     requestedStyle: styleId,
-    resolvedStyle: chosenStyle,
+    resolvedStyle,
     seed,
-    playfield: play,
-    finish: {
-      x: play.right - 12 * scale,
-      y: finishY,
-      width: gateWidth + 12 * scale,
-      height: finishHeight
+    turnCount,
+    corridorWidth,
+    rows,
+    cols,
+    cellSize,
+    offsetX,
+    offsetY,
+    playfield: {
+      left: offsetX,
+      top: offsetY,
+      right: offsetX + gridWidth,
+      bottom: offsetY + gridHeight,
+      width: gridWidth,
+      height: gridHeight
     },
-    baseWalls: walls,
-    walls: walls.slice(),
-    manual: false
+    startRect,
+    finishRect,
+    pathRects,
+    walls
   };
-}
-
-function refreshCourseWalls() {
-  if (!state.course) {
-    return;
-  }
-  state.course.walls = [...state.course.baseWalls, ...state.customWalls];
 }
 
 function updateCourseMeta() {
   if (!state.course) {
     return;
   }
-  const presetLabel = `${state.preset.stageLabel} / ${canvas.width} x ${canvas.height}`;
-  courseMeta.textContent = `${state.course.resolvedStyle} / seed ${state.course.seed} / ${presetLabel}`;
+  courseMeta.textContent = `${state.course.resolvedStyle} / seed ${state.course.seed} / ${state.preset.stageLabel}`;
 }
 
 function syncCourseJson() {
@@ -419,13 +475,25 @@ function syncCourseJson() {
       requestedStyle: state.course.requestedStyle,
       resolvedStyle: state.course.resolvedStyle,
       seed: state.course.seed,
-      playfield: state.course.playfield,
-      finish: state.course.finish,
+      turnCount: state.course.turnCount,
+      corridorWidth: state.course.corridorWidth,
+      rows: state.course.rows,
+      cols: state.course.cols,
+      cellSize: state.course.cellSize,
+      offsetX: state.course.offsetX,
+      offsetY: state.course.offsetY,
+      startRect: state.course.startRect,
+      finishRect: state.course.finishRect,
+      pathRects: state.course.pathRects,
       walls: state.course.walls
     },
     null,
     2
   );
+}
+
+function updateStatus(text) {
+  raceStatus.textContent = text;
 }
 
 function renderPodium() {
@@ -445,29 +513,22 @@ function renderPodium() {
   });
 }
 
-function updateStatus(text) {
-  raceStatus.textContent = text;
-}
-
 function createRacers(count) {
-  const play = state.course.playfield;
-  const scale = getScale();
-  const slotHeight = (play.height - 160 * scale) / count;
-
+  const start = state.course.startRect;
   return Array.from({ length: count }, (_, index) => {
     const palette = RACER_PALETTE[index];
-    const size = clamp(24 * scale, 18, 28);
-    const centerY = play.top + 90 * scale + slotHeight * index + slotHeight * 0.5;
-    const speed = randomBetween(Math.random, 280 * scale, 340 * scale);
-    const angle = randomBetween(Math.random, -0.24, 0.24);
+    const size = clamp(state.course.cellSize * 0.46, 14, 22);
+    const laneHeight = start.height / count;
+    const angle = (Math.random() - 0.5) * 0.28;
+    const speed = clamp(state.course.cellSize * 4.4, 120, 210);
     return {
       id: index + 1,
       label: `SQ-${String(index + 1).padStart(2, "0")}`,
       color: palette.color,
       wave: palette.wave,
       frequency: palette.frequency,
-      x: play.left + 58 * scale + (index % 2) * 24 * scale,
-      y: clamp(centerY - size * 0.5, play.top + 30 * scale, play.bottom - size - 30 * scale),
+      x: start.x + 8 + (index % 2) * 12,
+      y: start.y + laneHeight * index + laneHeight * 0.5 - size * 0.5,
       size,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
@@ -495,10 +556,8 @@ function resetRace(autostart = false) {
 }
 
 function generateCourse(seedValue = seedInput.value) {
-  state.customWalls = [];
   state.course = buildCourse(courseStyleSelect.value, seedValue);
   seedInput.value = String(state.course.seed);
-  refreshCourseWalls();
   updateCourseMeta();
   syncCourseJson();
   resetRace(false);
@@ -599,12 +658,11 @@ function handleRacerCollisions() {
       const relativeVelocityX = racerA.vx - racerB.vx;
       const relativeVelocityY = racerA.vy - racerB.vy;
       const speedAlongNormal = relativeVelocityX * nx + relativeVelocityY * ny;
-
       if (speedAlongNormal > 0) {
         continue;
       }
 
-      const impulse = (-1.05 * speedAlongNormal) / 2;
+      const impulse = (-1.04 * speedAlongNormal) / 2;
       racerA.vx += impulse * nx;
       racerA.vy += impulse * ny;
       racerB.vx -= impulse * nx;
@@ -635,15 +693,15 @@ function updateRace(deltaSeconds) {
       bounceOnAxis(racer, wall, "y");
     }
 
-    racer.x = clamp(racer.x, play.left - racer.size, play.right + 10);
+    racer.x = clamp(racer.x, play.left, play.right - racer.size);
     racer.y = clamp(racer.y, play.top, play.bottom - racer.size);
 
     racer.trail.push({ x: racer.x + racer.size * 0.5, y: racer.y + racer.size * 0.5 });
-    if (racer.trail.length > 18) {
+    if (racer.trail.length > 16) {
       racer.trail.shift();
     }
 
-    if (intersectsRect(racer, state.course.finish)) {
+    if (intersectsRect(racer, state.course.finishRect)) {
       racer.finished = true;
       racer.finishTime = state.elapsed;
       state.finishedOrder.push(racer);
@@ -661,61 +719,83 @@ function updateRace(deltaSeconds) {
 }
 
 function drawBackground() {
-  const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, "#111827");
-  gradient.addColorStop(0.55, "#0d1824");
-  gradient.addColorStop(1, "#08111a");
-  context.fillStyle = gradient;
+  context.fillStyle = COLORS.page;
   context.fillRect(0, 0, canvas.width, canvas.height);
 
-  const glow = context.createRadialGradient(canvas.width * 0.2, canvas.height * 0.08, 10, canvas.width * 0.2, canvas.height * 0.08, canvas.width * 0.45);
-  glow.addColorStop(0, "rgba(255,140,66,0.24)");
-  glow.addColorStop(1, "rgba(255,140,66,0)");
-  context.fillStyle = glow;
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = COLORS.stage;
+  context.fillRect(
+    state.course.playfield.left - 20,
+    state.course.playfield.top - 20,
+    state.course.playfield.width + 40,
+    state.course.playfield.height + 40
+  );
+}
+
+function drawCells(rects, fill, stroke) {
+  rects.forEach((rect) => {
+    context.fillStyle = fill;
+    context.fillRect(rect.x, rect.y, rect.width, rect.height);
+    if (stroke) {
+      context.strokeStyle = stroke;
+      context.lineWidth = 1;
+      context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+    }
+  });
+}
+
+function drawStartAndGoal() {
+  const start = state.course.startRect;
+  const finish = state.course.finishRect;
+
+  context.fillStyle = COLORS.start;
+  context.fillRect(start.x, start.y, start.width, start.height);
+  context.strokeStyle = COLORS.frame;
+  context.lineWidth = 2;
+  context.strokeRect(start.x, start.y, start.width, start.height);
+  context.fillStyle = COLORS.ink;
+  context.font = `${Math.max(12, state.course.cellSize * 0.34)}px "Space Grotesk"`;
+  context.fillText("START", start.x + 8, start.y + start.height - 8);
+
+  context.fillStyle = COLORS.finishLight;
+  context.fillRect(finish.x, finish.y, finish.width, finish.height);
+  context.strokeStyle = COLORS.frame;
+  context.lineWidth = 2;
+  context.strokeRect(finish.x, finish.y, finish.width, finish.height);
+
+  const checker = Math.max(4, Math.floor(finish.width / 6));
+  for (let row = 0; row < checker; row += 1) {
+    for (let col = 0; col < checker; col += 1) {
+      context.fillStyle = (row + col) % 2 === 0 ? COLORS.finishDark : COLORS.finishLight;
+      const size = finish.width / checker;
+      context.fillRect(finish.x + col * size, finish.y + row * size, size, size);
+    }
+  }
+
+  context.fillStyle = COLORS.finishLight;
+  context.fillRect(finish.x + 8, finish.y + finish.height - 24, finish.width - 16, 18);
+  context.fillStyle = COLORS.ink;
+  context.font = `${Math.max(12, state.course.cellSize * 0.32)}px "Space Grotesk"`;
+  context.fillText("GOAL", finish.x + 12, finish.y + finish.height - 10);
 }
 
 function drawTrack() {
-  const play = state.course.playfield;
-  const scale = getScale();
   drawBackground();
+  drawCells(state.course.walls, COLORS.blocked, COLORS.blockedStroke);
+  drawCells(state.course.pathRects, COLORS.path, null);
 
-  context.fillStyle = "rgba(255,255,255,0.04)";
-  context.fillRect(play.left, play.top, play.width, play.height);
-
-  context.strokeStyle = "rgba(255,255,255,0.05)";
-  context.lineWidth = 2;
-  for (let x = play.left; x < play.right; x += 90 * scale) {
-    context.beginPath();
-    context.moveTo(x, play.top);
-    context.lineTo(x, play.bottom);
-    context.stroke();
-  }
-  for (let y = play.top; y < play.bottom; y += 90 * scale) {
-    context.beginPath();
-    context.moveTo(play.left, y);
-    context.lineTo(play.right, y);
-    context.stroke();
-  }
-
-  context.fillStyle = "rgba(82, 199, 255, 0.18)";
-  context.fillRect(state.course.finish.x, state.course.finish.y, state.course.finish.width, state.course.finish.height);
-  context.fillStyle = "rgba(82, 199, 255, 0.64)";
-  for (let y = state.course.finish.y; y < state.course.finish.y + state.course.finish.height; y += 42 * scale) {
-    context.fillRect(state.course.finish.x, y, state.course.finish.width, 20 * scale);
-  }
-
-  context.fillStyle = "#22384b";
-  state.course.walls.forEach((wall) => {
-    context.fillRect(wall.x, wall.y, wall.width, wall.height);
+  context.fillStyle = COLORS.pathShade;
+  state.course.pathRects.forEach((rect) => {
+    context.fillRect(rect.x, rect.y, rect.width, 4);
   });
+
+  drawStartAndGoal();
 }
 
 function drawRacers() {
   for (const racer of state.racers) {
     if (racer.trail.length > 1) {
-      context.strokeStyle = `${racer.color}4d`;
-      context.lineWidth = 4;
+      context.strokeStyle = `${racer.color}55`;
+      context.lineWidth = 3;
       context.beginPath();
       racer.trail.forEach((point, index) => {
         if (index === 0) {
@@ -733,93 +813,73 @@ function drawRacers() {
     context.fillStyle = racer.color;
     context.fillRect(-racer.size * 0.5, -racer.size * 0.5, racer.size, racer.size);
     context.restore();
-
-    if (!racer.finished) {
-      context.fillStyle = "rgba(255,255,255,0.92)";
-      context.font = `${12 * getScale()}px "Space Grotesk"`;
-      context.fillText(racer.id, racer.x + 6, racer.y - 8);
-    }
   }
 }
 
 function drawOverlay() {
-  const scale = getScale();
-  const bannerHeight = canvas.height > canvas.width ? 150 * scale : 118 * scale;
-  const footerHeight = canvas.height > canvas.width ? 124 * scale : 106 * scale;
+  const topWidth = canvas.width - 56;
+  const topHeight = canvas.height > canvas.width ? 108 : 92;
+  const footerHeight = canvas.height > canvas.width ? 94 : 84;
+  const rankingWidth = canvas.height > canvas.width ? 170 : 160;
 
-  context.fillStyle = "rgba(5, 10, 17, 0.7)";
-  context.fillRect(36 * scale, 32 * scale, canvas.width - 72 * scale, bannerHeight);
-  context.fillRect(36 * scale, canvas.height - footerHeight - 32 * scale, canvas.width - 72 * scale, footerHeight);
+  context.fillStyle = COLORS.overlay;
+  context.fillRect(28, 24, topWidth, topHeight);
+  context.fillRect(28, canvas.height - footerHeight - 24, topWidth, footerHeight);
+  context.fillRect(canvas.width - rankingWidth - 28, 146, rankingWidth, 156);
 
-  context.fillStyle = "#f8f3eb";
-  context.font = `${44 * scale}px "Space Grotesk"`;
-  context.fillText(state.course.title, 68 * scale, 88 * scale);
-  context.font = `${20 * scale}px "IBM Plex Sans JP"`;
-  context.fillStyle = "#d2bfa2";
-  context.fillText(`Style ${state.course.resolvedStyle.toUpperCase()}  /  Seed ${state.course.seed}`, 68 * scale, 124 * scale);
+  context.fillStyle = COLORS.ink;
+  context.font = 'bold 28px "Space Grotesk"';
+  context.fillText(state.course.title, 44, 62);
+  context.font = '16px "IBM Plex Sans JP"';
+  context.fillStyle = COLORS.softInk;
+  context.fillText(`Style ${state.course.resolvedStyle.toUpperCase()} / Seed ${state.course.seed}`, 44, 88);
+  context.fillText(state.preset.label, 44, 110);
 
-  context.fillStyle = "#f8f3eb";
-  context.font = `${38 * scale}px "Space Grotesk"`;
-  context.fillText(formatTime(state.elapsed), canvas.width - 240 * scale, 88 * scale);
-  context.font = `${18 * scale}px "IBM Plex Sans JP"`;
-  context.fillStyle = "#d2bfa2";
-  context.fillText(state.preset.label, canvas.width - 420 * scale, 124 * scale);
+  context.fillStyle = COLORS.ink;
+  context.font = 'bold 24px "Space Grotesk"';
+  context.fillText(formatTime(state.elapsed), canvas.width - 140, 62);
+  context.font = '14px "IBM Plex Sans JP"';
+  context.fillStyle = COLORS.softInk;
+  context.fillText(`Race ${state.raceIndex}`, canvas.width - 140, 86);
+  context.fillText(`${state.racers.length} racers`, canvas.width - 140, 106);
 
-  const rankingX = canvas.width - 305 * scale;
-  const rankingY = 180 * scale;
-  const rankingWidth = 240 * scale;
-  const rankingHeight = 178 * scale;
-  context.fillStyle = "rgba(5,10,17,0.62)";
-  context.fillRect(rankingX, rankingY, rankingWidth, rankingHeight);
-  context.fillStyle = "#f8f3eb";
-  context.font = `${20 * scale}px "Space Grotesk"`;
-  context.fillText("LIVE ORDER", rankingX + 24 * scale, rankingY + 34 * scale);
+  context.fillStyle = COLORS.ink;
+  context.font = 'bold 16px "Space Grotesk"';
+  context.fillText("LIVE", canvas.width - rankingWidth - 12, 170);
 
   const liveOrder = [...state.finishedOrder];
   state.racers
     .filter((racer) => !racer.finished)
-    .sort((a, b) => (b.x - a.x) - (b.vx - a.vx) * 0.2)
+    .sort((a, b) => b.x - a.x)
     .forEach((racer) => liveOrder.push(racer));
 
   liveOrder.slice(0, 4).forEach((racer, index) => {
+    const y = 196 + index * 28;
     context.fillStyle = racer.color;
-    context.fillRect(rankingX + 22 * scale, rankingY + 52 * scale + index * 28 * scale, 16 * scale, 16 * scale);
-    context.fillStyle = "#f8f3eb";
-    context.font = `${18 * scale}px "IBM Plex Sans JP"`;
-    context.fillText(`${index + 1}. ${racer.label}`, rankingX + 50 * scale, rankingY + 66 * scale + index * 28 * scale);
+    context.fillRect(canvas.width - rankingWidth, y - 12, 12, 12);
+    context.fillStyle = COLORS.ink;
+    context.font = '14px "IBM Plex Sans JP"';
+    context.fillText(`${index + 1}. ${racer.label}`, canvas.width - rankingWidth + 18, y);
   });
 
-  context.fillStyle = "#f8f3eb";
-  context.font = `${18 * scale}px "IBM Plex Sans JP"`;
+  context.fillStyle = COLORS.ink;
+  context.font = '14px "IBM Plex Sans JP"';
   context.fillText(
-    `Race ${state.raceIndex}  /  Racers ${state.racers.length}  /  Speed ${Number(simSpeedInput.value).toFixed(1)}x`,
-    70 * scale,
-    canvas.height - 86 * scale
+    `${recordStatus.textContent} / ${recordFormat.textContent}`,
+    44,
+    canvas.height - 64
   );
-  context.fillStyle = "#d2bfa2";
   context.fillText(
-    `${recordStatus.textContent}  /  ${recordFormat.textContent}  /  ${state.running ? raceStatus.textContent : "READY"}`,
-    70 * scale,
-    canvas.height - 52 * scale
+    `${state.running ? raceStatus.textContent : "READY"} / speed ${Number(simSpeedInput.value).toFixed(1)}x`,
+    44,
+    canvas.height - 42
   );
 
   if (recorderState.mediaRecorder?.state === "recording") {
-    context.fillStyle = "#ff5d73";
+    context.fillStyle = COLORS.accent;
     context.beginPath();
-    context.arc(canvas.width - 84 * scale, canvas.height - 74 * scale, 10 * scale, 0, Math.PI * 2);
+    context.arc(canvas.width - 72, canvas.height - 56, 8, 0, Math.PI * 2);
     context.fill();
-    context.fillStyle = "#f8f3eb";
-    context.font = `${18 * scale}px "Space Grotesk"`;
-    context.fillText("REC", canvas.width - 60 * scale, canvas.height - 68 * scale);
-  }
-
-  if (editorModeInput.checked) {
-    context.strokeStyle = "rgba(255, 212, 94, 0.8)";
-    context.lineWidth = 3;
-    context.setLineDash([12 * scale, 10 * scale]);
-    const play = state.course.playfield;
-    context.strokeRect(play.left, play.top, play.width, play.height);
-    context.setLineDash([]);
   }
 }
 
@@ -837,13 +897,8 @@ function maybeAutoAdvance(timestamp) {
     return;
   }
 
-  const nextSeed = randomSeed();
-  seedInput.value = String(nextSeed);
-  state.course = buildCourse(courseStyleSelect.value, nextSeed);
-  state.customWalls = [];
-  refreshCourseWalls();
-  updateCourseMeta();
-  syncCourseJson();
+  seedInput.value = String(randomSeed());
+  generateCourse(seedInput.value);
   startRace();
 }
 
@@ -905,22 +960,22 @@ function startRecording() {
   recorderState.chunks = [];
   recorderState.profile = profile;
 
-  const mediaRecorder = profile.mimeType
-    ? new MediaRecorder(recorderState.stream, {
-        mimeType: profile.mimeType,
-        videoBitsPerSecond: 10_000_000
-      })
-    : new MediaRecorder(recorderState.stream);
-
+  const options = profile.mimeType
+    ? { mimeType: profile.mimeType, videoBitsPerSecond: 4_000_000 }
+    : { videoBitsPerSecond: 4_000_000 };
+  const mediaRecorder = new MediaRecorder(recorderState.stream, options);
   recorderState.mediaRecorder = mediaRecorder;
+
   mediaRecorder.ondataavailable = (event) => {
     if (event.data && event.data.size > 0) {
       recorderState.chunks.push(event.data);
     }
   };
+
   mediaRecorder.onstop = () => {
-    const blobType = profile.mimeType || "video/webm";
-    const blob = new Blob(recorderState.chunks, { type: blobType });
+    const blob = new Blob(recorderState.chunks, {
+      type: profile.mimeType || "video/webm"
+    });
     downloadBlob(blob, profile.extension);
     recorderState.stream?.getTracks().forEach((track) => track.stop());
     recorderState.stream = null;
@@ -940,23 +995,40 @@ function startRecording() {
 function applyLoadedCourse(payload) {
   const presetId = OUTPUT_PRESETS.some((preset) => preset.id === payload.preset)
     ? payload.preset
-    : state.preset.id;
+    : OUTPUT_PRESETS[0].id;
   outputPresetSelect.value = presetId;
   setCanvasPreset(presetId);
-  state.customWalls = [];
 
   state.course = {
     title: "SHIKAKU RACE",
     requestedStyle: payload.requestedStyle ?? payload.resolvedStyle ?? "manual",
     resolvedStyle: payload.resolvedStyle ?? payload.requestedStyle ?? "manual",
     seed: Number(payload.seed) || randomSeed(),
-    playfield: payload.playfield ?? getPlayfield(canvas.width, canvas.height),
-    finish: payload.finish,
-    baseWalls: payload.walls ?? [],
-    walls: payload.walls ?? [],
-    manual: true
+    turnCount: Number(payload.turnCount) || Number(turnCountInput.value),
+    corridorWidth: Number(payload.corridorWidth) || Number(corridorWidthInput.value),
+    rows: payload.rows,
+    cols: payload.cols,
+    cellSize: payload.cellSize,
+    offsetX: payload.offsetX,
+    offsetY: payload.offsetY,
+    playfield: {
+      left: payload.offsetX,
+      top: payload.offsetY,
+      right: payload.offsetX + payload.cols * payload.cellSize,
+      bottom: payload.offsetY + payload.rows * payload.cellSize,
+      width: payload.cols * payload.cellSize,
+      height: payload.rows * payload.cellSize
+    },
+    startRect: payload.startRect,
+    finishRect: payload.finishRect,
+    pathRects: payload.pathRects ?? [],
+    walls: payload.walls ?? []
   };
 
+  turnCountInput.value = String(state.course.turnCount);
+  turnCountValue.textContent = String(state.course.turnCount);
+  corridorWidthInput.value = String(state.course.corridorWidth);
+  corridorWidthValue.textContent = String(state.course.corridorWidth);
   seedInput.value = String(state.course.seed);
   updateCourseMeta();
   syncCourseJson();
@@ -968,58 +1040,6 @@ function exportCourseJson() {
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(courseJson.value).catch(() => {});
   }
-}
-
-function getCanvasPoint(event) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  return {
-    x: (event.clientX - rect.left) * scaleX,
-    y: (event.clientY - rect.top) * scaleY
-  };
-}
-
-function addCustomBumper(event) {
-  if (!editorModeInput.checked || !state.course) {
-    return;
-  }
-
-  const point = getCanvasPoint(event);
-  const play = state.course.playfield;
-  if (
-    point.x < play.left ||
-    point.x > play.right ||
-    point.y < play.top ||
-    point.y > play.bottom
-  ) {
-    return;
-  }
-
-  const scale = getScale();
-  const length = Number(bumperLengthInput.value) * scale;
-  const thickness = clamp(18 * scale, 14, 26);
-  const orientation = bumperOrientationSelect.value;
-
-  const wall =
-    orientation === "horizontal"
-      ? {
-          x: clamp(point.x - length * 0.5, play.left + 30 * scale, play.right - length - 30 * scale),
-          y: clamp(point.y - thickness * 0.5, play.top + 20 * scale, play.bottom - thickness - 20 * scale),
-          width: length,
-          height: thickness
-        }
-      : {
-          x: clamp(point.x - thickness * 0.5, play.left + 30 * scale, play.right - thickness - 30 * scale),
-          y: clamp(point.y - length * 0.5, play.top + 20 * scale, play.bottom - length - 20 * scale),
-          width: thickness,
-          height: length
-        };
-
-  state.customWalls.push(wall);
-  refreshCourseWalls();
-  syncCourseJson();
-  resetRace(false);
 }
 
 fillSelectOptions();
@@ -1038,12 +1058,12 @@ simSpeedInput.addEventListener("input", () => {
   simSpeedValue.textContent = `${Number(simSpeedInput.value).toFixed(1)}x`;
 });
 
-obstacleCountInput.addEventListener("input", () => {
-  obstacleCountValue.textContent = obstacleCountInput.value;
+turnCountInput.addEventListener("input", () => {
+  turnCountValue.textContent = turnCountInput.value;
 });
 
-bumperLengthInput.addEventListener("input", () => {
-  bumperLengthValue.textContent = bumperLengthInput.value;
+corridorWidthInput.addEventListener("input", () => {
+  corridorWidthValue.textContent = corridorWidthInput.value;
 });
 
 outputPresetSelect.addEventListener("change", () => {
@@ -1061,24 +1081,10 @@ randomSeedButton.addEventListener("click", () => {
 });
 
 shuffleStyleButton.addEventListener("click", () => {
-  const randomStyle = COURSE_STYLES[Math.floor(Math.random() * COURSE_STYLES.length)];
-  courseStyleSelect.value = randomStyle.id;
+  const style = COURSE_STYLES[randomInt(Math.random, 0, COURSE_STYLES.length - 1)];
+  courseStyleSelect.value = style.id;
   seedInput.value = String(randomSeed());
   generateCourse(seedInput.value);
-});
-
-undoBumperButton.addEventListener("click", () => {
-  state.customWalls.pop();
-  refreshCourseWalls();
-  syncCourseJson();
-  resetRace(false);
-});
-
-clearBumpersButton.addEventListener("click", () => {
-  state.customWalls = [];
-  refreshCourseWalls();
-  syncCourseJson();
-  resetRace(false);
 });
 
 startButton.addEventListener("click", () => {
@@ -1112,15 +1118,10 @@ exportJsonButton.addEventListener("click", () => {
 
 loadJsonButton.addEventListener("click", () => {
   try {
-    const payload = JSON.parse(courseJson.value);
-    applyLoadedCourse(payload);
+    applyLoadedCourse(JSON.parse(courseJson.value));
   } catch (error) {
     updateStatus("JSONエラー");
   }
-});
-
-canvas.addEventListener("click", (event) => {
-  addCustomBumper(event);
 });
 
 requestAnimationFrame(loop);

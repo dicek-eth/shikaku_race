@@ -78,9 +78,14 @@
               <select id="courseStyle"></select>
             </label>
             <label class="field">
-              <span>障害物の数</span>
-              <input id="obstacleCount" type="range" min="4" max="18" step="1" value="9" />
-              <strong id="obstacleCountValue">9</strong>
+              <span>曲がり数</span>
+              <input id="turnCount" type="range" min="3" max="14" step="1" value="7" />
+              <strong id="turnCountValue">7</strong>
+            </label>
+            <label class="field">
+              <span>道幅</span>
+              <input id="corridorWidth" type="range" min="2" max="4" step="1" value="2" />
+              <strong id="corridorWidthValue">2</strong>
             </label>
             <label class="field">
               <span>Seed</span>
@@ -96,27 +101,15 @@
           </div>
 
           <div class="panel-card">
-            <h2>Quick Editor</h2>
-            <label class="field checkbox">
-              <input id="editorMode" type="checkbox" />
-              <span>編集モードでキャンバスをクリックしてバンパーを追加</span>
-            </label>
-            <label class="field">
-              <span>バンパー方向</span>
-              <select id="bumperOrientation">
-                <option value="horizontal">横</option>
-                <option value="vertical">縦</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>バンパー長さ</span>
-              <input id="bumperLength" type="range" min="80" max="420" step="10" value="180" />
-              <strong id="bumperLengthValue">180</strong>
-            </label>
-            <div class="button-row two">
-              <button id="undoBumperButton" type="button">ひとつ戻す</button>
-              <button id="clearBumpersButton" type="button">追加分を消す</button>
-            </div>
+            <h2>Course Notes</h2>
+            <p class="panel-note">
+              コースは「障害物を並べる」方式ではなく、曲がりくねった通路を自動生成します。
+              スタートとゴールは正方形で、右端のゴールには白黒チェッカーを表示します。
+            </p>
+            <p class="panel-note">
+              Seed を変えると同じスタイルでも別の通路になります。動画量産用に、
+              自動でレースを回しながら録画できます。
+            </p>
           </div>
 
           <div class="panel-card">
