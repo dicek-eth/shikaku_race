@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Square Race Arena</title>
+    <title>Shikaku Race Studio</title>
     <meta
       name="description"
-      content="カラフルな四角たちがゴールまで暴れながら進む、観戦型ブラウザゲーム。"
+      content="YouTube Shorts / Instagram Reels 向けに四角レース動画を量産できる、録画対応の Square Race studio."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -20,13 +20,14 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">AUTONOMOUS CHAOS / PUBLIC PLAYGROUND</p>
-          <h1>Square Race Arena</h1>
+          <p class="eyebrow">SHORT-FORM RACE GENERATOR</p>
+          <h1>Shikaku Race Studio</h1>
           <p class="hero-text">
-            何も操作しない。四角を放り込む。あとは直進と反射だけで、誰が先に右端のゴールへ届くかを見届けます。
+            見るための四角レースです。コースを量産し、縦動画や横動画に合わせて録画し、
+            YouTube や Instagram にそのまま持っていけます。
           </p>
         </div>
-        <div class="hero-stats" id="statusPanel">
+        <div class="hero-stats">
           <div class="stat-card">
             <span class="stat-label">状態</span>
             <strong id="raceStatus">待機中</strong>
@@ -36,63 +37,130 @@
             <strong id="raceTimer">0.0s</strong>
           </div>
           <div class="stat-card">
-            <span class="stat-label">レース数</span>
-            <strong id="raceCount">0</strong>
+            <span class="stat-label">録画</span>
+            <strong id="recordStatus">停止中</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">フォーマット</span>
+            <strong id="recordFormat">未判定</strong>
           </div>
         </div>
       </header>
 
       <main class="layout">
-        <section class="control-panel">
+        <section class="studio-panel">
           <div class="panel-card">
-            <h2>セットアップ</h2>
+            <h2>Video Output</h2>
+            <label class="field">
+              <span>出力プリセット</span>
+              <select id="outputPreset"></select>
+            </label>
             <label class="field">
               <span>レーサー数</span>
               <input id="racerCount" type="range" min="2" max="6" step="1" value="4" />
               <strong id="racerCountValue">4</strong>
             </label>
             <label class="field">
-              <span>トラック</span>
-              <select id="trackSelect"></select>
-            </label>
-            <label class="field">
-              <span>観戦スピード</span>
-              <input id="simSpeed" type="range" min="0.5" max="2.5" step="0.1" value="1" />
+              <span>再生速度</span>
+              <input id="simSpeed" type="range" min="0.6" max="2.4" step="0.1" value="1" />
               <strong id="simSpeedValue">1.0x</strong>
             </label>
-            <div class="button-row">
-              <button id="startButton" class="primary">スタート</button>
-              <button id="pauseButton">一時停止</button>
-              <button id="resetButton">シャッフル</button>
+            <label class="field checkbox">
+              <input id="autoCycle" type="checkbox" checked />
+              <span>ゴール後にコースを自動更新して次レースへ進む</span>
+            </label>
+          </div>
+
+          <div class="panel-card">
+            <h2>Course Generator</h2>
+            <label class="field">
+              <span>コーススタイル</span>
+              <select id="courseStyle"></select>
+            </label>
+            <label class="field">
+              <span>障害物の数</span>
+              <input id="obstacleCount" type="range" min="4" max="18" step="1" value="9" />
+              <strong id="obstacleCountValue">9</strong>
+            </label>
+            <label class="field">
+              <span>Seed</span>
+              <div class="inline-row">
+                <input id="seedInput" type="number" value="42" />
+                <button id="randomSeedButton" type="button">ランダム</button>
+              </div>
+            </label>
+            <div class="button-row two">
+              <button id="generateCourseButton" class="primary" type="button">コース生成</button>
+              <button id="shuffleStyleButton" type="button">スタイル変更</button>
             </div>
           </div>
 
           <div class="panel-card">
-            <h2>遊び方</h2>
-            <p>
-              1回のレースは自動進行です。四角は基本的にまっすぐ進み、壁やバンパーに当たると反射してそのまま走り続けます。
-            </p>
-            <p>
-              ゴールは右端のフィニッシュ帯です。音はスタート後に有効になり、壁に当たるたびにレーサーごとに違う音が鳴ります。
-            </p>
+            <h2>Quick Editor</h2>
+            <label class="field checkbox">
+              <input id="editorMode" type="checkbox" />
+              <span>編集モードでキャンバスをクリックしてバンパーを追加</span>
+            </label>
+            <label class="field">
+              <span>バンパー方向</span>
+              <select id="bumperOrientation">
+                <option value="horizontal">横</option>
+                <option value="vertical">縦</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>バンパー長さ</span>
+              <input id="bumperLength" type="range" min="80" max="420" step="10" value="180" />
+              <strong id="bumperLengthValue">180</strong>
+            </label>
+            <div class="button-row two">
+              <button id="undoBumperButton" type="button">ひとつ戻す</button>
+              <button id="clearBumpersButton" type="button">追加分を消す</button>
+            </div>
           </div>
 
           <div class="panel-card">
-            <h2>Podium</h2>
-            <ol id="podium" class="podium-list">
-              <li>まだゴールした四角はいません。</li>
-            </ol>
+            <h2>Recording</h2>
+            <p class="panel-note">
+              まず `スタート` で音声を有効化してください。録画はキャンバスのみを書き出します。
+            </p>
+            <div class="button-row">
+              <button id="startButton" class="primary" type="button">スタート</button>
+              <button id="pauseButton" type="button">一時停止</button>
+              <button id="resetButton" type="button">リセット</button>
+            </div>
+            <div class="button-row two">
+              <button id="recordButton" type="button">録画開始</button>
+              <button id="stopRecordButton" type="button">録画停止</button>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <h2>Course JSON</h2>
+            <textarea id="courseJson" spellcheck="false"></textarea>
+            <div class="button-row two">
+              <button id="exportJsonButton" type="button">JSONを書き出す</button>
+              <button id="loadJsonButton" type="button">JSONを読み込む</button>
+            </div>
           </div>
         </section>
 
-        <section class="arena-panel">
+        <section class="preview-panel">
           <div class="canvas-frame">
-            <canvas id="arena" width="1200" height="720" aria-label="Square Race arena"></canvas>
-            <div class="overlay-tag">LIVE SIMULATION</div>
+            <canvas id="arena" width="1080" height="1920" aria-label="Shikaku Race output canvas"></canvas>
+            <div class="overlay-tag">REC READY</div>
           </div>
-          <div class="legend-row">
-            <span><i class="legend-swatch wall"></i> 壁 / バンパー</span>
-            <span><i class="legend-swatch finish"></i> ゴール</span>
+          <div class="preview-footer">
+            <div class="panel-card mini">
+              <span class="stat-label">現在のコース</span>
+              <strong id="courseMeta">switchback / seed 42</strong>
+            </div>
+            <div class="panel-card mini">
+              <span class="stat-label">Podium</span>
+              <ol id="podium" class="podium-list">
+                <li>まだ結果はありません。</li>
+              </ol>
+            </div>
           </div>
         </section>
       </main>
