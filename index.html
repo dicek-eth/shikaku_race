@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Square Race Arena</title>
+    <meta
+      name="description"
+      content="カラフルな四角たちがゴールまで暴れながら進む、観戦型ブラウザゲーム。"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">AUTONOMOUS CHAOS / PUBLIC PLAYGROUND</p>
+          <h1>Square Race Arena</h1>
+          <p class="hero-text">
+            何も操作しない。四角を放り込む。あとは壁・加速帯・衝突が勝敗を決めます。
+          </p>
+        </div>
+        <div class="hero-stats" id="statusPanel">
+          <div class="stat-card">
+            <span class="stat-label">状態</span>
+            <strong id="raceStatus">待機中</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">経過</span>
+            <strong id="raceTimer">0.0s</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">レース数</span>
+            <strong id="raceCount">0</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="control-panel">
+          <div class="panel-card">
+            <h2>セットアップ</h2>
+            <label class="field">
+              <span>レーサー数</span>
+              <input id="racerCount" type="range" min="4" max="36" step="1" value="14" />
+              <strong id="racerCountValue">14</strong>
+            </label>
+            <label class="field">
+              <span>トラック</span>
+              <select id="trackSelect"></select>
+            </label>
+            <label class="field">
+              <span>観戦スピード</span>
+              <input id="simSpeed" type="range" min="0.5" max="2.5" step="0.1" value="1" />
+              <strong id="simSpeedValue">1.0x</strong>
+            </label>
+            <div class="button-row">
+              <button id="startButton" class="primary">スタート</button>
+              <button id="pauseButton">一時停止</button>
+              <button id="resetButton">シャッフル</button>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <h2>遊び方</h2>
+            <p>
+              1回のレースは自動進行です。レーサー数とトラックを決めてスタートするだけで、
+              四角たちがチェックポイントを目指して暴れます。
+            </p>
+            <p>
+              加速帯に乗ると一気に前へ。混雑すると弾き飛ばされるので、数を増やすほど結果が荒れます。
+            </p>
+          </div>
+
+          <div class="panel-card">
+            <h2>Podium</h2>
+            <ol id="podium" class="podium-list">
+              <li>まだゴールした四角はいません。</li>
+            </ol>
+          </div>
+        </section>
+
+        <section class="arena-panel">
+          <div class="canvas-frame">
+            <canvas id="arena" width="1200" height="720" aria-label="Square Race arena"></canvas>
+            <div class="overlay-tag">LIVE SIMULATION</div>
+          </div>
+          <div class="legend-row">
+            <span><i class="legend-swatch wall"></i> 壁</span>
+            <span><i class="legend-swatch boost"></i> 加速帯</span>
+            <span><i class="legend-swatch finish"></i> ゴール</span>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./game.js"></script>
+  </body>
+</html>
