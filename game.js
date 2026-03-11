@@ -18,6 +18,8 @@ const branchRateValue = document.getElementById("branchRateValue");
 const breakWallCountInput = document.getElementById("breakWallCount");
 const breakWallCountValue = document.getElementById("breakWallCountValue");
 const movingWallDirectionInput = document.getElementById("movingWallDirection");
+const movingWallSpeedInput = document.getElementById("movingWallSpeed");
+const movingWallSpeedValue = document.getElementById("movingWallSpeedValue");
 const seedInput = document.getElementById("seedInput");
 const randomSeedButton = document.getElementById("randomSeedButton");
 const generateCourseButton = document.getElementById("generateCourseButton");
@@ -437,6 +439,10 @@ function updateBreakWallLabel() {
   breakWallCountValue.textContent = breakWallCountInput.value;
 }
 
+function updateMovingWallSpeedLabel() {
+  movingWallSpeedValue.textContent = `${movingWallSpeedInput.value}%`;
+}
+
 function getRectCells(rect) {
   const cells = [];
   for (let row = rect.y; row < rect.y + rect.height; row += 1) {
@@ -688,7 +694,7 @@ function buildBreakWalls(grid, path, count, cellSize, offsetX, offsetY) {
   return walls;
 }
 
-function buildMovingWalls(direction, randomFn) {
+function buildMovingWalls(direction, speedRate, randomFn) {
   if (direction === "none") {
     return [];
   }
@@ -696,7 +702,7 @@ function buildMovingWalls(direction, randomFn) {
   return [
     {
       direction,
-      speed: 0.07 + randomFn() * 0.015,
+      speed: (0.045 + randomFn() * 0.008) * speedRate,
       delay: 0
     }
   ];
@@ -710,6 +716,7 @@ function buildSwitchbackCourseCandidate(
   branchRate,
   breakWallCount,
   movingWallDirection,
+  movingWallSpeedRate,
   racerCount
 ) {
   const play = getPlayfield();
@@ -812,7 +819,7 @@ function buildSwitchbackCourseCandidate(
     height: FINISH_SIZE
   });
   const breakWalls = buildBreakWalls(grid, path, breakWallCount, cellSize, offsetX, offsetY);
-  const movingWalls = buildMovingWalls(movingWallDirection, randomFn);
+  const movingWalls = buildMovingWalls(movingWallDirection, movingWallSpeedRate, randomFn);
 
   return {
     title: "SHIKAKU RACE",
@@ -830,6 +837,7 @@ function buildSwitchbackCourseCandidate(
     branchCount: branches.length,
     widthMode,
     movingWallDirection,
+    movingWallSpeedRate,
     racerSpeed: clamp(cellSize * 4.5, 90, 170),
     cellSize,
     passableGrid: grid,
@@ -995,6 +1003,7 @@ function buildCourseCandidate(
   branchRate,
   breakWallCount,
   movingWallDirection,
+  movingWallSpeedRate,
   racerCount
 ) {
   if (styleId === "switchback") {
@@ -1006,6 +1015,7 @@ function buildCourseCandidate(
       branchRate,
       breakWallCount,
       movingWallDirection,
+      movingWallSpeedRate,
       racerCount
     );
   }
@@ -1092,7 +1102,7 @@ function buildCourseCandidate(
     height: FINISH_SIZE
   });
   const breakWalls = buildBreakWalls(grid, path, breakWallCount, cellSize, offsetX, offsetY);
-  const movingWalls = buildMovingWalls(movingWallDirection, randomFn);
+  const movingWalls = buildMovingWalls(movingWallDirection, movingWallSpeedRate, randomFn);
 
   return {
     title: "SHIKAKU RACE",
@@ -1110,6 +1120,7 @@ function buildCourseCandidate(
     branchCount: branches.length,
     widthMode,
     movingWallDirection,
+    movingWallSpeedRate,
     racerSpeed: clamp(cellSize * 4.5, 90, 170),
     cellSize,
     passableGrid: grid,
@@ -1145,6 +1156,7 @@ function buildCourse(styleId, seedValue) {
   const branchRate = Number(branchRateInput.value);
   const breakWallCount = Number(breakWallCountInput.value);
   const movingWallDirection = movingWallDirectionInput.value;
+  const movingWallSpeedRate = Number(movingWallSpeedInput.value) / 100;
   const racerCount = Number(racerCountInput.value);
   let bestCandidate = null;
 
@@ -1158,6 +1170,7 @@ function buildCourse(styleId, seedValue) {
       branchRate,
       breakWallCount,
       movingWallDirection,
+      movingWallSpeedRate,
       racerCount
     );
     if (Number.isFinite(candidate.actualLength) && (!bestCandidate || candidate.actualLength > bestCandidate.actualLength)) {
@@ -1170,7 +1183,18 @@ function buildCourse(styleId, seedValue) {
 
   return (
     bestCandidate ??
-    buildCourseCandidate(styleId, seedValue, 0, targetLength, widthVariance, branchRate, breakWallCount, movingWallDirection, racerCount)
+    buildCourseCandidate(
+      styleId,
+      seedValue,
+      0,
+      targetLength,
+      widthVariance,
+      branchRate,
+      breakWallCount,
+      movingWallDirection,
+      movingWallSpeedRate,
+      racerCount
+    )
   );
 }
 
@@ -1203,6 +1227,7 @@ function syncCourseJson() {
       branchCount: state.course.branchCount,
       widthMode: state.course.widthMode,
       movingWallDirection: state.course.movingWallDirection,
+      movingWallSpeedRate: state.course.movingWallSpeedRate,
       racerSpeed: state.course.racerSpeed,
       cellSize: state.course.cellSize,
       passableGrid: state.course.passableGrid,
@@ -1271,7 +1296,7 @@ function createRacers(count) {
   return Array.from({ length: count }, (_, index) => {
     const palette = RACER_PALETTE[index];
     const zone = state.course.startZones[index] ?? state.course.startZones[0];
-    const size = clamp(state.course.cellSize * 0.42, 10, 16);
+    const size = clamp(state.course.cellSize * 0.72, 16, 28);
     const angle = randomInt(Math.random, -65, 65) * (Math.PI / 180);
     const startX = zone.x + (zone.width - size) * 0.5;
     const startY = zone.y + (zone.height - size) * 0.5;
@@ -1910,12 +1935,12 @@ function drawRacers() {
       for (let index = 0; index < racer.trail.length; index += 1) {
         const point = racer.trail[index];
         const ratio = index / racer.trail.length;
-        const radius = Math.max(2, racer.size * (0.14 + ratio * 0.18));
-        const alpha = 0.08 + ratio * 0.24;
-        context.fillStyle =
-          index % 2 === 0
-            ? `rgba(255, 215, 110, ${alpha})`
-            : `rgba(255, 122, 69, ${alpha})`;
+        const radius = Math.max(3, racer.size * (0.18 + ratio * 0.2));
+        const alpha = 0.08 + ratio * 0.28;
+        const r = Number.parseInt(racer.color.slice(1, 3), 16);
+        const g = Number.parseInt(racer.color.slice(3, 5), 16);
+        const b = Number.parseInt(racer.color.slice(5, 7), 16);
+        context.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
         context.beginPath();
         context.arc(point.x, point.y, radius, 0, Math.PI * 2);
         context.fill();
@@ -2180,6 +2205,8 @@ function applyLoadedCourse(payload) {
   breakWallCountInput.value = String(payload.breakWallCount ?? breakWallCountInput.value);
   updateBreakWallLabel();
   movingWallDirectionInput.value = String(payload.movingWallDirection ?? movingWallDirectionInput.value);
+  movingWallSpeedInput.value = String(Math.round((payload.movingWallSpeedRate ?? Number(movingWallSpeedInput.value) / 100) * 100));
+  updateMovingWallSpeedLabel();
 
   state.course = {
     title: "SHIKAKU RACE",
@@ -2197,6 +2224,7 @@ function applyLoadedCourse(payload) {
     branchCount: Number(payload.branchCount ?? 0),
     widthMode: payload.widthMode ?? getWidthMode(Number(payload.widthVariance ?? widthVarianceInput.value)),
     movingWallDirection: payload.movingWallDirection ?? "right",
+    movingWallSpeedRate: Number(payload.movingWallSpeedRate ?? Number(movingWallSpeedInput.value) / 100),
     racerSpeed: Number(payload.racerSpeed ?? clamp((payload.cellSize ?? 20) * 4.5, 90, 170)),
     cellSize: payload.cellSize,
     passableGrid: rebuildPassableGrid(payload),
@@ -2233,6 +2261,7 @@ recordFormat.textContent = getRecordingProfile()?.label ?? "未対応";
 updateWidthVarianceLabel();
 updateBranchRateLabel();
 updateBreakWallLabel();
+updateMovingWallSpeedLabel();
 setCanvasPreset(outputPresetSelect.value);
 generateCourse(seedInput.value);
 
@@ -2263,6 +2292,10 @@ breakWallCountInput.addEventListener("input", () => {
 
 movingWallDirectionInput.addEventListener("change", () => {
   generateCourse(seedInput.value);
+});
+
+movingWallSpeedInput.addEventListener("input", () => {
+  updateMovingWallSpeedLabel();
 });
 
 outputPresetSelect.addEventListener("change", () => {
