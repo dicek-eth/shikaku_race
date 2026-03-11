@@ -557,8 +557,10 @@ function buildCourse(styleId, seedValue) {
     gridSize: GRID_SIZE,
     targetLength,
     actualLength,
+    timeLimit: clamp(Math.ceil((actualLength / 4.5) * 3.2), 18, 60),
     widthVariance,
     cellSize,
+    passableGrid: grid,
     playfield: {
       left: offsetX,
       top: offsetY,
@@ -605,8 +607,10 @@ function syncCourseJson() {
       gridSize: state.course.gridSize,
       targetLength: state.course.targetLength,
       actualLength: state.course.actualLength,
+      timeLimit: state.course.timeLimit,
       widthVariance: state.course.widthVariance,
       cellSize: state.course.cellSize,
+      passableGrid: state.course.passableGrid,
       playfield: state.course.playfield,
       startRect: state.course.startRect,
       finishRect: state.course.finishRect,
@@ -616,6 +620,27 @@ function syncCourseJson() {
     null,
     2
   );
+}
+
+function rebuildPassableGrid(payload) {
+  if (payload.passableGrid) {
+    return payload.passableGrid;
+  }
+
+  const grid = createMatrix(payload.gridSize ?? GRID_SIZE, payload.gridSize ?? GRID_SIZE, false);
+  const left = payload.playfield?.left ?? 0;
+  const top = payload.playfield?.top ?? 0;
+  const cellSize = payload.cellSize ?? 1;
+
+  for (const rect of payload.pathRects ?? []) {
+    const col = Math.round((rect.x - left) / cellSize);
+    const row = Math.round((rect.y - top) / cellSize);
+    if (row >= 0 && row < grid.length && col >= 0 && col < grid[0].length) {
+      grid[row][col] = true;
+    }
+  }
+
+  return grid;
 }
 
 function updateStatus(text) {
@@ -658,6 +683,8 @@ function createRacers(count) {
       size,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
+      lastSafeX: start.x + 6 + (index % 2) * 8,
+      lastSafeY: start.y + laneHeight * index + laneHeight * 0.5 - size * 0.5,
       finished: false,
       finishTime: 0,
       trail: [],
@@ -720,6 +747,41 @@ function intersectsRect(entity, rect) {
   );
 }
 
+function isPointOnCourse(course, x, y) {
+  const col = Math.floor((x - course.playfield.left) / course.cellSize);
+  const row = Math.floor((y - course.playfield.top) / course.cellSize);
+  if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) {
+    return false;
+  }
+  return Boolean(course.passableGrid[row]?.[col]);
+}
+
+function isRacerOnCourse(course, racer) {
+  const inset = Math.max(2, racer.size * 0.18);
+  const samples = [
+    [racer.x + inset, racer.y + inset],
+    [racer.x + racer.size - inset, racer.y + inset],
+    [racer.x + inset, racer.y + racer.size - inset],
+    [racer.x + racer.size - inset, racer.y + racer.size - inset],
+    [racer.x + racer.size * 0.5, racer.y + racer.size * 0.5]
+  ];
+
+  return samples.every(([x, y]) => isPointOnCourse(course, x, y));
+}
+
+function recoverRacerToCourse(racer) {
+  racer.x = racer.lastSafeX;
+  racer.y = racer.lastSafeY;
+
+  if (Math.abs(racer.vx) >= Math.abs(racer.vy)) {
+    racer.vx *= -0.92;
+    racer.vy *= 0.88;
+  } else {
+    racer.vy *= -0.92;
+    racer.vx *= 0.88;
+  }
+}
+
 function bounceOnAxis(racer, wall, axis) {
   if (!intersectsRect(racer, wall)) {
     return;
@@ -740,51 +802,61 @@ function bounceOnAxis(racer, wall, axis) {
 }
 
 function handleRacerCollisions() {
-  for (let index = 0; index < state.racers.length; index += 1) {
-    const racerA = state.racers[index];
-    if (racerA.finished) {
-      continue;
-    }
-
-    for (let inner = index + 1; inner < state.racers.length; inner += 1) {
-      const racerB = state.racers[inner];
-      if (racerB.finished) {
+  for (let pass = 0; pass < 3; pass += 1) {
+    for (let index = 0; index < state.racers.length; index += 1) {
+      const racerA = state.racers[index];
+      if (racerA.finished) {
         continue;
       }
 
-      const ax = racerA.x + racerA.size * 0.5;
-      const ay = racerA.y + racerA.size * 0.5;
-      const bx = racerB.x + racerB.size * 0.5;
-      const by = racerB.y + racerB.size * 0.5;
-      const dx = bx - ax;
-      const dy = by - ay;
-      const distance = Math.hypot(dx, dy);
-      const minDistance = (racerA.size + racerB.size) * 0.5;
+      for (let inner = index + 1; inner < state.racers.length; inner += 1) {
+        const racerB = state.racers[inner];
+        if (racerB.finished) {
+          continue;
+        }
 
-      if (distance === 0 || distance >= minDistance) {
-        continue;
+        const ax = racerA.x + racerA.size * 0.5;
+        const ay = racerA.y + racerA.size * 0.5;
+        const bx = racerB.x + racerB.size * 0.5;
+        const by = racerB.y + racerB.size * 0.5;
+        let dx = bx - ax;
+        let dy = by - ay;
+        let distance = Math.hypot(dx, dy);
+        const minDistance = (racerA.size + racerB.size) * 0.5;
+
+        if (distance >= minDistance) {
+          continue;
+        }
+
+        if (distance === 0) {
+          dx = racerB.vx - racerA.vx;
+          dy = racerB.vy - racerA.vy;
+          distance = Math.hypot(dx, dy);
+          if (distance === 0) {
+            dx = inner - index;
+            dy = pass % 2 === 0 ? 1 : -1;
+            distance = Math.hypot(dx, dy);
+          }
+        }
+
+        const nx = dx / distance;
+        const ny = dy / distance;
+        const overlap = minDistance - distance + 0.6;
+        racerA.x -= nx * overlap * 0.5;
+        racerA.y -= ny * overlap * 0.5;
+        racerB.x += nx * overlap * 0.5;
+        racerB.y += ny * overlap * 0.5;
+
+        const relativeVelocityX = racerA.vx - racerB.vx;
+        const relativeVelocityY = racerA.vy - racerB.vy;
+        const speedAlongNormal = relativeVelocityX * nx + relativeVelocityY * ny;
+        const impulse = speedAlongNormal < 0 ? (-1.08 * speedAlongNormal) / 2 : 6;
+
+        racerA.vx += impulse * nx;
+        racerA.vy += impulse * ny;
+        racerB.vx -= impulse * nx;
+        racerB.vy -= impulse * ny;
       }
-
-      const nx = dx / distance;
-      const ny = dy / distance;
-      const overlap = minDistance - distance;
-      racerA.x -= nx * overlap * 0.5;
-      racerA.y -= ny * overlap * 0.5;
-      racerB.x += nx * overlap * 0.5;
-      racerB.y += ny * overlap * 0.5;
-
-      const relativeVelocityX = racerA.vx - racerB.vx;
-      const relativeVelocityY = racerA.vy - racerB.vy;
-      const speedAlongNormal = relativeVelocityX * nx + relativeVelocityY * ny;
-      if (speedAlongNormal > 0) {
-        continue;
-      }
-
-      const impulse = (-1.04 * speedAlongNormal) / 2;
-      racerA.vx += impulse * nx;
-      racerA.vy += impulse * ny;
-      racerB.vx -= impulse * nx;
-      racerB.vy -= impulse * ny;
     }
   }
 }
@@ -792,7 +864,7 @@ function handleRacerCollisions() {
 function updateRace(deltaSeconds) {
   const dt = deltaSeconds * Number(simSpeedInput.value);
   const play = state.course.playfield;
-  const maxTime = 28;
+  const maxTime = state.course.timeLimit;
   state.elapsed += dt;
   raceTimer.textContent = formatTime(state.elapsed);
 
@@ -800,6 +872,9 @@ function updateRace(deltaSeconds) {
     if (racer.finished) {
       continue;
     }
+
+    racer.lastSafeX = racer.x;
+    racer.lastSafeY = racer.y;
 
     racer.x += racer.vx * dt;
     for (const wall of state.course.wallRects) {
@@ -813,6 +888,13 @@ function updateRace(deltaSeconds) {
 
     racer.x = clamp(racer.x, play.left, play.right - racer.size);
     racer.y = clamp(racer.y, play.top, play.bottom - racer.size);
+
+    if (!isRacerOnCourse(state.course, racer)) {
+      recoverRacerToCourse(racer);
+    } else {
+      racer.lastSafeX = racer.x;
+      racer.lastSafeY = racer.y;
+    }
 
     racer.trail.push({ x: racer.x + racer.size * 0.5, y: racer.y + racer.size * 0.5 });
     if (racer.trail.length > 16) {
@@ -934,7 +1016,7 @@ function drawOverlay() {
     40,
     74
   );
-  context.fillText(`${state.preset.label}`, 40, 92);
+  context.fillText(`${state.preset.label} / limit ${state.course.timeLimit}s`, 40, 92);
 
   context.fillStyle = COLORS.ink;
   context.font = 'bold 22px "Space Grotesk"';
@@ -1101,8 +1183,10 @@ function applyLoadedCourse(payload) {
     gridSize: payload.gridSize ?? GRID_SIZE,
     targetLength: Number(payload.targetLength ?? pathLengthInput.value),
     actualLength: Number(payload.actualLength ?? pathLengthInput.value),
+    timeLimit: Number(payload.timeLimit ?? Math.ceil((Number(payload.actualLength ?? pathLengthInput.value) / 4.5) * 3.2)),
     widthVariance: Number(payload.widthVariance ?? widthVarianceInput.value),
     cellSize: payload.cellSize,
+    passableGrid: rebuildPassableGrid(payload),
     playfield: payload.playfield,
     startRect: payload.startRect,
     finishRect: payload.finishRect,
