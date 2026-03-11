@@ -770,6 +770,7 @@ function buildSwitchbackCourseCandidate(seedValue, attempt, targetLength, widthV
     movingWallCount,
     branchCount: branches.length,
     widthMode,
+    movingWallDirection: "up",
     racerSpeed: clamp(cellSize * 4.5, 90, 170),
     cellSize,
     passableGrid: grid,
@@ -1039,6 +1040,7 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
     movingWallCount,
     branchCount: branches.length,
     widthMode,
+    movingWallDirection: "right",
     racerSpeed: clamp(cellSize * 4.5, 90, 170),
     cellSize,
     passableGrid: grid,
@@ -1131,6 +1133,7 @@ function syncCourseJson() {
       movingWallCount: state.course.movingWallCount,
       branchCount: state.course.branchCount,
       widthMode: state.course.widthMode,
+      movingWallDirection: state.course.movingWallDirection,
       racerSpeed: state.course.racerSpeed,
       cellSize: state.course.cellSize,
       passableGrid: state.course.passableGrid,
@@ -1357,48 +1360,88 @@ function triggerSquish(racer, axis, intensity = 1) {
   }
 }
 
-function getFloodProgress(wall, elapsed) {
-  const raw = Math.max(0, (elapsed - wall.delay) * wall.speed);
-  return Math.floor(raw * 10) / 10;
+function getMovingWallProgress(wall, elapsed) {
+  return Math.max(0, (elapsed - wall.delay) * wall.speed);
 }
 
-function isCellFlooded(course, col, row) {
-  const key = `${col},${row}`;
-  const index = course.pathIndexMap?.[key];
-  if (index === undefined) {
-    return false;
+function getMovingFillRects(course, wall, elapsed) {
+  const progress = getMovingWallProgress(wall, elapsed);
+  if (progress <= 0) {
+    return [];
   }
-  return (course.movingWalls ?? []).some((wall) => getFloodProgress(wall, state.elapsed) >= index + 1);
+
+  const fillRects = [];
+  const leadingRects = [];
+  const fullCells = Math.floor(progress);
+  const partial = Math.max(0, Math.min(1, progress - fullCells));
+
+  for (let row = 0; row < course.gridRows; row += 1) {
+    for (let col = 0; col < course.gridCols; col += 1) {
+      if (!course.passableGrid[row]?.[col]) {
+        continue;
+      }
+
+      const rectX = course.playfield.left + col * course.cellSize;
+      const rectY = course.playfield.top + row * course.cellSize;
+
+      if (wall.direction === "up") {
+        const depth = course.gridRows - 1 - row;
+        if (depth < fullCells) {
+          fillRects.push({ x: rectX, y: rectY, width: course.cellSize, height: course.cellSize });
+        } else if (depth === fullCells && partial > 0) {
+          const height = course.cellSize * partial;
+          fillRects.push({ x: rectX, y: rectY + course.cellSize - height, width: course.cellSize, height });
+          leadingRects.push({ x: rectX, y: rectY + course.cellSize - height, width: course.cellSize, height });
+        }
+      } else {
+        const depth = col;
+        if (depth < fullCells) {
+          fillRects.push({ x: rectX, y: rectY, width: course.cellSize, height: course.cellSize });
+        } else if (depth === fullCells && partial > 0) {
+          const width = course.cellSize * partial;
+          fillRects.push({ x: rectX, y: rectY, width, height: course.cellSize });
+          leadingRects.push({ x: rectX, y: rectY, width, height: course.cellSize });
+        }
+      }
+    }
+  }
+
+  return { fillRects, leadingRects };
 }
 
-function isRacerTrappedByFlood(course, racer) {
-  const col = Math.floor((racer.x + racer.size * 0.5 - course.playfield.left) / course.cellSize);
-  const row = Math.floor((racer.y + racer.size * 0.5 - course.playfield.top) / course.cellSize);
-  if (!isCellFlooded(course, col, row)) {
+function collidesWithStaticBoundsOrWalls(course, racer) {
+  if (
+    racer.x <= course.playfield.left ||
+    racer.y <= course.playfield.top ||
+    racer.x + racer.size >= course.playfield.right ||
+    racer.y + racer.size >= course.playfield.bottom
+  ) {
+    return true;
+  }
+
+  return course.wallRects.some((wall) => intersectsRect(racer, wall));
+}
+
+function collideMovingWall(course, racer, rect) {
+  if (!intersectsRect(racer, rect)) {
     return false;
   }
 
-  const directions = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1]
-  ];
+  if (course.movingWallDirection === "up") {
+    racer.y = rect.y - racer.size;
+    racer.vy = -Math.abs(racer.vy);
+    triggerSquish(racer, "y", 1.4);
+  } else {
+    racer.x = rect.x + rect.width;
+    racer.vx = Math.abs(racer.vx);
+    triggerSquish(racer, "x", 1.4);
+  }
 
-  for (const [dx, dy] of directions) {
-    const nextCol = col + dx;
-    const nextRow = row + dy;
-    if (
-      nextCol < 0 ||
-      nextCol >= course.gridCols ||
-      nextRow < 0 ||
-      nextRow >= course.gridRows
-    ) {
-      continue;
-    }
-    if (course.passableGrid[nextRow]?.[nextCol] && !isCellFlooded(course, nextCol, nextRow)) {
-      return false;
-    }
+  playCollisionTone(racer, racer.speed * 0.9);
+  normalizeRacerSpeed(racer);
+
+  if (collidesWithStaticBoundsOrWalls(course, racer)) {
+    eliminateRacer(racer, "moving-wall");
   }
 
   return true;
@@ -1583,8 +1626,17 @@ function updateRace(deltaSeconds) {
       bounceOnAxis(racer, wall, "y");
     }
 
-    if (isRacerTrappedByFlood(state.course, racer)) {
-      eliminateRacer(racer, "moving-wall");
+    for (const wall of state.course.movingWalls ?? []) {
+      const movingState = getMovingFillRects(state.course, wall, state.elapsed);
+      for (const rect of movingState.leadingRects) {
+        collideMovingWall(state.course, racer, rect);
+        if (racer.eliminated) {
+          break;
+        }
+      }
+      if (racer.eliminated) {
+        break;
+      }
     }
     if (racer.eliminated) {
       continue;
@@ -1705,26 +1757,15 @@ function drawBreakWalls(rects) {
 
 function drawMovingWalls(rects, timestamp) {
   rects.forEach((wall, wallIndex) => {
-    const progress = getFloodProgress(wall, state.elapsed);
-    const fullCells = Math.min(Math.floor(progress), state.course.mainPathCells?.length ?? 0);
-    const partial = Math.max(0, Math.min(1, progress - fullCells));
-    for (let index = 0; index < fullCells; index += 1) {
-      const cell = state.course.mainPathCells[index];
-      const width = state.course.pathWidthMap?.[`${cell.x},${cell.y}`] ?? 1;
-      const x = state.course.playfield.left + cell.x * state.course.cellSize;
-      const y = state.course.playfield.top + (cell.y - Math.floor((width - 1) * 0.5)) * state.course.cellSize;
-      context.fillStyle = wallIndex % 2 === 0 ? "rgba(74, 102, 210, 0.42)" : "rgba(44, 170, 208, 0.34)";
-      context.fillRect(x, y, state.course.cellSize, state.course.cellSize * width);
-    }
-
-    if (partial > 0 && fullCells < (state.course.mainPathCells?.length ?? 0)) {
-      const cell = state.course.mainPathCells[fullCells];
-      const width = state.course.pathWidthMap?.[`${cell.x},${cell.y}`] ?? 1;
-      const x = state.course.playfield.left + cell.x * state.course.cellSize;
-      const y = state.course.playfield.top + (cell.y - Math.floor((width - 1) * 0.5)) * state.course.cellSize;
-      context.fillStyle = wallIndex % 2 === 0 ? `rgba(74, 102, 210, ${0.16 + partial * 0.22})` : `rgba(44, 170, 208, ${0.14 + partial * 0.2})`;
-      context.fillRect(x, y, state.course.cellSize, state.course.cellSize * width);
-    }
+    const movingState = getMovingFillRects(state.course, wall, state.elapsed);
+    movingState.fillRects.forEach((rect) => {
+      context.fillStyle = wallIndex % 2 === 0 ? "rgba(74, 102, 210, 0.30)" : "rgba(44, 170, 208, 0.24)";
+      context.fillRect(rect.x, rect.y, rect.width, rect.height);
+    });
+    movingState.leadingRects.forEach((rect) => {
+      context.fillStyle = wallIndex % 2 === 0 ? "rgba(40, 71, 182, 0.82)" : "rgba(30, 135, 178, 0.72)";
+      context.fillRect(rect.x, rect.y, rect.width, rect.height);
+    });
   });
 }
 
@@ -2075,6 +2116,7 @@ function applyLoadedCourse(payload) {
     movingWallCount: Number(payload.movingWallCount ?? movingWallCountInput.value),
     branchCount: Number(payload.branchCount ?? 0),
     widthMode: payload.widthMode ?? getWidthMode(Number(payload.widthVariance ?? widthVarianceInput.value)),
+    movingWallDirection: payload.movingWallDirection ?? "right",
     racerSpeed: Number(payload.racerSpeed ?? clamp((payload.cellSize ?? 20) * 4.5, 90, 170)),
     cellSize: payload.cellSize,
     passableGrid: rebuildPassableGrid(payload),
