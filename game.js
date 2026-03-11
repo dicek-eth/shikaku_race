@@ -29,6 +29,7 @@ const pauseButton = document.getElementById("pauseButton");
 const resetButton = document.getElementById("resetButton");
 const recordButton = document.getElementById("recordButton");
 const stopRecordButton = document.getElementById("stopRecordButton");
+const recordingModeInput = document.getElementById("recordingMode");
 const exportJsonButton = document.getElementById("exportJsonButton");
 const loadJsonButton = document.getElementById("loadJsonButton");
 const courseJson = document.getElementById("courseJson");
@@ -154,7 +155,11 @@ const recorderState = {
   mediaRecorder: null,
   chunks: [],
   stream: null,
-  profile: null
+  profile: null,
+  mode: "continuous",
+  pendingStopAt: 0,
+  clipSequence: 0,
+  filename: ""
 };
 
 const state = {
@@ -200,6 +205,18 @@ function seededAttempt(seed, attempt) {
 
 function formatTime(seconds) {
   return `${seconds.toFixed(1)}s`;
+}
+
+function isPerRaceRecording() {
+  return recorderState.mode === "per-race";
+}
+
+function buildRecordingFilename(extension) {
+  const safeStyle = state.course?.styleId ?? "course";
+  const targetRaceIndex = state.running ? state.raceIndex : state.raceIndex + 1;
+  const raceLabel = `race-${Math.max(targetRaceIndex, 1)}`;
+  const clipLabel = `clip-${String(recorderState.clipSequence).padStart(3, "0")}`;
+  return `shikaku-race-${safeStyle}-${raceLabel}-${clipLabel}.${extension}`;
 }
 
 function drawRoundedRect(x, y, width, height, radius, fillStyle) {
@@ -1369,11 +1386,16 @@ function startRace() {
 }
 
 function finishRace(reason = "全員ゴール", winner = null) {
+  const finishedAt = performance.now();
   state.running = false;
   state.paused = false;
   state.winningRacer = winner;
-  state.winnerBannerUntil = winner ? performance.now() + 5000 : 0;
-  state.nextAutoRaceAt = autoCycleInput.checked ? performance.now() + (winner ? 5000 : 1800) : 0;
+  state.winnerBannerUntil = winner ? finishedAt + 5000 : 0;
+  state.nextAutoRaceAt = autoCycleInput.checked ? finishedAt + (winner ? 5000 : 1800) : 0;
+  if (recorderState.mediaRecorder?.state === "recording" && isPerRaceRecording()) {
+    recorderState.pendingStopAt = winner ? state.winnerBannerUntil : finishedAt + 1200;
+    recordStatus.textContent = "書き出し待ち";
+  }
   updateStatus(reason);
 }
 
@@ -2110,13 +2132,22 @@ function draw(timestamp = performance.now()) {
 }
 
 function maybeAutoAdvance(timestamp) {
-  if (!state.nextAutoRaceAt || timestamp < state.nextAutoRaceAt) {
+  if (!state.nextAutoRaceAt || timestamp < state.nextAutoRaceAt || recorderState.pendingStopAt) {
     return;
   }
 
   seedInput.value = String(randomSeed());
   generateCourse(seedInput.value);
   startRace();
+}
+
+function maybeStopRecordingAfterRace(timestamp) {
+  if (!recorderState.pendingStopAt || timestamp < recorderState.pendingStopAt) {
+    return false;
+  }
+  recorderState.pendingStopAt = 0;
+  stopRecording();
+  return true;
 }
 
 function loop(timestamp) {
@@ -2129,18 +2160,21 @@ function loop(timestamp) {
     updateRace(deltaSeconds);
   } else {
     state.lastFrame = timestamp;
-    maybeAutoAdvance(timestamp);
+    const stoppedRecording = maybeStopRecordingAfterRace(timestamp);
+    if (!stoppedRecording) {
+      maybeAutoAdvance(timestamp);
+    }
   }
 
   draw(timestamp);
   requestAnimationFrame(loop);
 }
 
-function downloadBlob(blob, extension) {
+function downloadBlob(blob, extension, filename = `shikaku-race-${Date.now()}.${extension}`) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `shikaku-race-${Date.now()}.${extension}`;
+  anchor.download = filename;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
@@ -2151,6 +2185,7 @@ function stopRecording() {
   if (!recorderState.mediaRecorder || recorderState.mediaRecorder.state !== "recording") {
     return;
   }
+  recorderState.pendingStopAt = 0;
   recorderState.mediaRecorder.stop();
 }
 
@@ -2176,6 +2211,10 @@ function startRecording() {
   recorderState.stream = new MediaStream(tracks);
   recorderState.chunks = [];
   recorderState.profile = profile;
+  recorderState.mode = recordingModeInput.value;
+  recorderState.pendingStopAt = 0;
+  recorderState.clipSequence += 1;
+  recorderState.filename = buildRecordingFilename(profile.extension);
 
   const options = profile.mimeType
     ? { mimeType: profile.mimeType, videoBitsPerSecond: 4_000_000 }
@@ -2193,15 +2232,16 @@ function startRecording() {
     const blob = new Blob(recorderState.chunks, {
       type: profile.mimeType || "video/webm"
     });
-    downloadBlob(blob, profile.extension);
+    downloadBlob(blob, profile.extension, recorderState.filename);
     recorderState.stream?.getTracks().forEach((track) => track.stop());
     recorderState.stream = null;
     recorderState.mediaRecorder = null;
+    recorderState.filename = "";
     recordStatus.textContent = "停止中";
   };
 
   mediaRecorder.start();
-  recordStatus.textContent = "録画中";
+  recordStatus.textContent = isPerRaceRecording() ? "1レース録画中" : "録画中";
   recordFormat.textContent = profile.label;
 
   if (!state.running) {
