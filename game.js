@@ -440,7 +440,7 @@ function updateBreakWallLabel() {
 }
 
 function updateMovingWallSpeedLabel() {
-  movingWallSpeedValue.textContent = `${movingWallSpeedInput.value}%`;
+  movingWallSpeedValue.textContent = `${(Number(movingWallSpeedInput.value) / 180).toFixed(1)}x`;
 }
 
 function getRectCells(rect) {
@@ -1156,7 +1156,7 @@ function buildCourse(styleId, seedValue) {
   const branchRate = Number(branchRateInput.value);
   const breakWallCount = Number(breakWallCountInput.value);
   const movingWallDirection = movingWallDirectionInput.value;
-  const movingWallSpeedRate = Number(movingWallSpeedInput.value) / 100;
+  const movingWallSpeedRate = Number(movingWallSpeedInput.value) / 180;
   const racerCount = Number(racerCountInput.value);
   let bestCandidate = null;
 
@@ -2205,7 +2205,9 @@ function applyLoadedCourse(payload) {
   breakWallCountInput.value = String(payload.breakWallCount ?? breakWallCountInput.value);
   updateBreakWallLabel();
   movingWallDirectionInput.value = String(payload.movingWallDirection ?? movingWallDirectionInput.value);
-  movingWallSpeedInput.value = String(Math.round((payload.movingWallSpeedRate ?? Number(movingWallSpeedInput.value) / 100) * 100));
+  movingWallSpeedInput.value = String(
+    Math.round((payload.movingWallSpeedRate ?? Number(movingWallSpeedInput.value) / 180) * 180)
+  );
   updateMovingWallSpeedLabel();
 
   state.course = {
@@ -2224,7 +2226,7 @@ function applyLoadedCourse(payload) {
     branchCount: Number(payload.branchCount ?? 0),
     widthMode: payload.widthMode ?? getWidthMode(Number(payload.widthVariance ?? widthVarianceInput.value)),
     movingWallDirection: payload.movingWallDirection ?? "right",
-    movingWallSpeedRate: Number(payload.movingWallSpeedRate ?? Number(movingWallSpeedInput.value) / 100),
+    movingWallSpeedRate: Number(payload.movingWallSpeedRate ?? Number(movingWallSpeedInput.value) / 180),
     racerSpeed: Number(payload.racerSpeed ?? clamp((payload.cellSize ?? 20) * 4.5, 90, 170)),
     cellSize: payload.cellSize,
     passableGrid: rebuildPassableGrid(payload),
