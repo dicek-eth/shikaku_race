@@ -13,6 +13,12 @@ const pathLengthInput = document.getElementById("pathLength");
 const pathLengthValue = document.getElementById("pathLengthValue");
 const widthVarianceInput = document.getElementById("widthVariance");
 const widthVarianceValue = document.getElementById("widthVarianceValue");
+const branchRateInput = document.getElementById("branchRate");
+const branchRateValue = document.getElementById("branchRateValue");
+const breakWallCountInput = document.getElementById("breakWallCount");
+const breakWallCountValue = document.getElementById("breakWallCountValue");
+const movingWallCountInput = document.getElementById("movingWallCount");
+const movingWallCountValue = document.getElementById("movingWallCountValue");
 const seedInput = document.getElementById("seedInput");
 const randomSeedButton = document.getElementById("randomSeedButton");
 const generateCourseButton = document.getElementById("generateCourseButton");
@@ -34,7 +40,7 @@ const podiumList = document.getElementById("podium");
 
 const GRID_COLS = 15;
 const GRID_ROWS = 20;
-const START_ZONE_SIZE = 2;
+const START_ZONE_SIZE = 1;
 const FINISH_SIZE = 2;
 const INNER_MARGIN = 1;
 const START_ZONE_GAP = 1;
@@ -423,6 +429,18 @@ function updateWidthVarianceLabel() {
   widthVarianceValue.textContent = getWidthMode(Number(widthVarianceInput.value)).label;
 }
 
+function updateBranchRateLabel() {
+  branchRateValue.textContent = `${branchRateInput.value}%`;
+}
+
+function updateBreakWallLabel() {
+  breakWallCountValue.textContent = breakWallCountInput.value;
+}
+
+function updateMovingWallLabel() {
+  movingWallCountValue.textContent = movingWallCountInput.value;
+}
+
 function getRectCells(rect) {
   const cells = [];
   for (let row = rect.y; row < rect.y + rect.height; row += 1) {
@@ -485,6 +503,101 @@ function measureShortestPath(grid, startZones, finishZone) {
   }
 
   return Infinity;
+}
+
+function carvePolyline(grid, points, width) {
+  points.forEach((point, index) => {
+    carveCentered(grid, point, width);
+    if (index > 0) {
+      carveConnection(grid, points[index - 1], point, width);
+    }
+  });
+}
+
+function buildBranches(grid, path, branchRate, widthMode, randomFn) {
+  const branches = [];
+  const branchCount = clamp(Math.round((branchRate / 100) * 4), 0, 4);
+  if (branchCount === 0 || path.length < 10) {
+    return branches;
+  }
+
+  for (let index = 0; index < branchCount; index += 1) {
+    let tries = 0;
+    while (tries < 16) {
+      const startIndex = randomInt(randomFn, 2, Math.max(2, path.length - 7));
+      const endIndex = randomInt(randomFn, startIndex + 3, Math.min(path.length - 2, startIndex + 8));
+      const start = path[startIndex];
+      const end = path[endIndex];
+      const direction = randomFn() > 0.5 ? 1 : -1;
+      const branchOffset = randomInt(randomFn, 2, 5);
+      const branchRow = clamp(start.y + direction * branchOffset, INNER_MARGIN + 1, GRID_ROWS - INNER_MARGIN - 2);
+
+      if (Math.abs(branchRow - end.y) < 2 && Math.abs(start.x - end.x) < 3) {
+        tries += 1;
+        continue;
+      }
+
+      const width = randomInt(randomFn, widthMode.min, widthMode.max);
+      const points = [
+        start,
+        { x: start.x, y: branchRow },
+        { x: end.x, y: branchRow },
+        end
+      ];
+      carvePolyline(grid, points, width);
+      branches.push({
+        startIndex,
+        endIndex,
+        width
+      });
+      break;
+    }
+  }
+
+  return branches;
+}
+
+function buildBreakWalls(path, widths, count, cellSize, offsetX, offsetY) {
+  const candidates = path
+    .map((point, index) => ({ point, index, width: widths[index] }))
+    .filter(({ point, width, index }) => width === 1 && index > Math.floor(path.length * 0.55) && point.x < GRID_COLS - 3);
+
+  const walls = [];
+  for (let index = 0; index < Math.min(count, candidates.length); index += 1) {
+    const candidate = candidates[Math.floor(((index + 1) * candidates.length) / (Math.min(count, candidates.length) + 1))];
+    walls.push({
+      cellX: candidate.point.x,
+      cellY: candidate.point.y,
+      x: offsetX + candidate.point.x * cellSize,
+      y: offsetY + candidate.point.y * cellSize,
+      width: cellSize,
+      height: cellSize,
+      broken: false
+    });
+  }
+  return walls;
+}
+
+function buildMovingWalls(path, widths, count, cellSize, offsetX, offsetY, randomFn) {
+  const candidates = path
+    .map((point, index) => ({ point, index, width: widths[index] }))
+    .filter(({ index, width }) => width >= 2 && index > 3 && index < path.length - 3);
+
+  const walls = [];
+  for (let index = 0; index < Math.min(count, candidates.length); index += 1) {
+    const candidate = candidates[Math.floor(((index + 1) * candidates.length) / (Math.min(count, candidates.length) + 1))];
+    walls.push({
+      baseX: offsetX + candidate.point.x * cellSize,
+      baseY: offsetY + candidate.point.y * cellSize,
+      width: cellSize,
+      height: cellSize,
+      axis: randomFn() > 0.5 ? "x" : "y",
+      amplitude: cellSize * 0.65,
+      speed: 1.2 + randomFn() * 1.2,
+      phase: randomFn() * Math.PI * 2
+    });
+  }
+  return walls;
 }
 
 function pushPoint(path, point) {
@@ -614,7 +727,7 @@ function buildWidths(profile, path, varianceRate, randomFn) {
   return widths;
 }
 
-function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVariance, racerCount) {
+function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVariance, branchRate, breakWallCount, movingWallCount, racerCount) {
   const play = getPlayfield();
   const seed = Number(seedValue) || 1;
   const randomFn = mulberry32(seededAttempt(seed, attempt));
@@ -657,6 +770,8 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
     }
   });
 
+  const branches = buildBranches(grid, path, branchRate, widthMode, randomFn);
+
   const cellSize = Math.floor(Math.min(play.width / GRID_COLS, play.height / GRID_ROWS));
   const offsetX = Math.floor(play.left + (play.width - cellSize * GRID_COLS) * 0.5);
   const offsetY = Math.floor(play.top + (play.height - cellSize * GRID_ROWS) * 0.5);
@@ -691,6 +806,8 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
     width: FINISH_SIZE,
     height: FINISH_SIZE
   });
+  const breakWalls = buildBreakWalls(path, widths, breakWallCount, cellSize, offsetX, offsetY);
+  const movingWalls = buildMovingWalls(path, widths, movingWallCount, cellSize, offsetX, offsetY, randomFn);
 
   return {
     title: "SHIKAKU RACE",
@@ -702,6 +819,10 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
     targetLength,
     actualLength: shortestPathLength,
     widthVariance,
+    branchRate,
+    breakWallCount,
+    movingWallCount,
+    branchCount: branches.length,
     widthMode,
     racerSpeed: clamp(cellSize * 4.5, 90, 170),
     cellSize,
@@ -723,18 +844,33 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
       height: FINISH_SIZE * cellSize
     },
     pathRects,
-    wallRects
+    wallRects,
+    breakWalls,
+    movingWalls
   };
 }
 
 function buildCourse(styleId, seedValue) {
   const targetLength = Number(pathLengthInput.value);
   const widthVariance = Number(widthVarianceInput.value);
+  const branchRate = Number(branchRateInput.value);
+  const breakWallCount = Number(breakWallCountInput.value);
+  const movingWallCount = Number(movingWallCountInput.value);
   const racerCount = Number(racerCountInput.value);
   let bestCandidate = null;
 
-  for (let attempt = 0; attempt < 48; attempt += 1) {
-    const candidate = buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVariance, racerCount);
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const candidate = buildCourseCandidate(
+      styleId,
+      seedValue,
+      attempt,
+      targetLength,
+      widthVariance,
+      branchRate,
+      breakWallCount,
+      movingWallCount,
+      racerCount
+    );
     if (Number.isFinite(candidate.actualLength) && (!bestCandidate || candidate.actualLength > bestCandidate.actualLength)) {
       bestCandidate = candidate;
     }
@@ -743,7 +879,10 @@ function buildCourse(styleId, seedValue) {
     }
   }
 
-  return bestCandidate ?? buildCourseCandidate(styleId, seedValue, 0, targetLength, widthVariance, racerCount);
+  return (
+    bestCandidate ??
+    buildCourseCandidate(styleId, seedValue, 0, targetLength, widthVariance, branchRate, breakWallCount, movingWallCount, racerCount)
+  );
 }
 
 function updateCourseMeta() {
@@ -769,6 +908,10 @@ function syncCourseJson() {
       targetLength: state.course.targetLength,
       actualLength: state.course.actualLength,
       widthVariance: state.course.widthVariance,
+      branchRate: state.course.branchRate,
+      breakWallCount: state.course.breakWallCount,
+      movingWallCount: state.course.movingWallCount,
+      branchCount: state.course.branchCount,
       widthMode: state.course.widthMode,
       racerSpeed: state.course.racerSpeed,
       cellSize: state.course.cellSize,
@@ -778,7 +921,9 @@ function syncCourseJson() {
       startRect: state.course.startRect,
       finishRect: state.course.finishRect,
       pathRects: state.course.pathRects,
-      wallRects: state.course.wallRects
+      wallRects: state.course.wallRects,
+      breakWalls: state.course.breakWalls,
+      movingWalls: state.course.movingWalls
     },
     null,
     2
@@ -834,8 +979,8 @@ function createRacers(count) {
   return Array.from({ length: count }, (_, index) => {
     const palette = RACER_PALETTE[index];
     const zone = state.course.startZones[index] ?? state.course.startZones[0];
-    const size = clamp(state.course.cellSize * 0.34, 8, 14);
-    const angle = (Math.random() - 0.5) * 0.24;
+    const size = clamp(state.course.cellSize * 0.42, 10, 16);
+    const angle = randomInt(Math.random, -65, 65) * (Math.PI / 180);
     const startX = zone.x + (zone.width - size) * 0.5;
     const startY = zone.y + (zone.height - size) * 0.5;
     return {
@@ -853,6 +998,8 @@ function createRacers(count) {
       lastSafeX: startX,
       lastSafeY: startY,
       finished: false,
+      eliminated: false,
+      deathReason: "",
       finishTime: 0,
       trail: [],
       nextSoundAt: 0,
@@ -990,6 +1137,47 @@ function triggerSquish(racer, axis, intensity = 1) {
   }
 }
 
+function getMovingWallRect(wall, timestamp) {
+  const wave = Math.sin(timestamp * 0.001 * wall.speed + wall.phase) * wall.amplitude;
+  return {
+    x: wall.axis === "x" ? wall.baseX + wave : wall.baseX,
+    y: wall.axis === "y" ? wall.baseY + wave : wall.baseY,
+    width: wall.width,
+    height: wall.height
+  };
+}
+
+function collideBreakWall(racer, wall, axis) {
+  if (wall.broken || !intersectsRect(racer, wall)) {
+    return false;
+  }
+
+  wall.broken = true;
+  const restitution = 0.92;
+  if (axis === "x") {
+    racer.x = racer.vx > 0 ? wall.x - racer.size : wall.x + wall.width;
+    racer.vx *= -restitution;
+    triggerSquish(racer, "x", 1.2);
+  } else {
+    racer.y = racer.vy > 0 ? wall.y - racer.size : wall.y + wall.height;
+    racer.vy *= -restitution;
+    triggerSquish(racer, "y", 1.2);
+  }
+  playCollisionTone(racer, racer.speed * 1.1);
+  normalizeRacerSpeed(racer);
+  return true;
+}
+
+function eliminateRacer(racer, reason = "脱落") {
+  if (racer.eliminated || racer.finished) {
+    return;
+  }
+  racer.eliminated = true;
+  racer.deathReason = reason;
+  racer.vx = 0;
+  racer.vy = 0;
+}
+
 function bounceOnAxis(racer, wall, axis) {
   if (!intersectsRect(racer, wall)) {
     return;
@@ -1050,13 +1238,13 @@ function handleRacerCollisions() {
   for (let pass = 0; pass < 5; pass += 1) {
     for (let index = 0; index < state.racers.length; index += 1) {
       const racerA = state.racers[index];
-      if (racerA.finished) {
+      if (racerA.finished || racerA.eliminated) {
         continue;
       }
 
       for (let inner = index + 1; inner < state.racers.length; inner += 1) {
         const racerB = state.racers[inner];
-        if (racerB.finished) {
+        if (racerB.finished || racerB.eliminated) {
           continue;
         }
 
@@ -1110,12 +1298,13 @@ function handleRacerCollisions() {
 function updateRace(deltaSeconds) {
   const dt = deltaSeconds * Number(simSpeedInput.value);
   const play = state.course.playfield;
+  const now = performance.now();
   state.elapsed += dt;
   raceTimer.textContent = formatTime(state.elapsed);
   let winner = null;
 
   for (const racer of state.racers) {
-    if (racer.finished) {
+    if (racer.finished || racer.eliminated) {
       continue;
     }
 
@@ -1123,13 +1312,29 @@ function updateRace(deltaSeconds) {
     racer.lastSafeY = racer.y;
 
     racer.x += racer.vx * dt;
+    for (const wall of state.course.breakWalls ?? []) {
+      collideBreakWall(racer, wall, "x");
+    }
     for (const wall of state.course.wallRects) {
       bounceOnAxis(racer, wall, "x");
     }
 
     racer.y += racer.vy * dt;
+    for (const wall of state.course.breakWalls ?? []) {
+      collideBreakWall(racer, wall, "y");
+    }
     for (const wall of state.course.wallRects) {
       bounceOnAxis(racer, wall, "y");
+    }
+
+    for (const wall of state.course.movingWalls ?? []) {
+      if (intersectsRect(racer, getMovingWallRect(wall, now))) {
+        eliminateRacer(racer, "moving-wall");
+        break;
+      }
+    }
+    if (racer.eliminated) {
+      continue;
     }
 
     bounceOnBounds(racer, play);
@@ -1160,6 +1365,12 @@ function updateRace(deltaSeconds) {
 
   if (winner) {
     finishRace(`${winner.label} WIN`, winner);
+    return;
+  }
+
+  const activeRacers = state.racers.filter((racer) => !racer.finished && !racer.eliminated);
+  if (activeRacers.length === 0) {
+    finishRace("全員脱落");
     return;
   }
 
@@ -1219,6 +1430,37 @@ function drawBrickWalls(rects) {
   });
 }
 
+function drawBreakWalls(rects) {
+  rects.forEach((wall) => {
+    if (wall.broken) {
+      return;
+    }
+    context.fillStyle = "#8d4f2c";
+    context.fillRect(wall.x, wall.y, wall.width, wall.height);
+    context.strokeStyle = "#fff2df";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(wall.x + wall.width * 0.2, wall.y + wall.height * 0.22);
+    context.lineTo(wall.x + wall.width * 0.52, wall.y + wall.height * 0.46);
+    context.lineTo(wall.x + wall.width * 0.34, wall.y + wall.height * 0.82);
+    context.moveTo(wall.x + wall.width * 0.58, wall.y + wall.height * 0.14);
+    context.lineTo(wall.x + wall.width * 0.78, wall.y + wall.height * 0.5);
+    context.lineTo(wall.x + wall.width * 0.56, wall.y + wall.height * 0.88);
+    context.stroke();
+  });
+}
+
+function drawMovingWalls(rects, timestamp) {
+  rects.forEach((wall) => {
+    const rect = getMovingWallRect(wall, timestamp);
+    context.fillStyle = "rgba(37, 48, 92, 0.95)";
+    context.fillRect(rect.x, rect.y, rect.width, rect.height);
+    context.strokeStyle = "#d8f1ff";
+    context.lineWidth = 2;
+    context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+  });
+}
+
 function drawStartAndGoal() {
   const finish = state.course.finishRect;
 
@@ -1247,10 +1489,12 @@ function drawStartAndGoal() {
   }
 }
 
-function drawTrack() {
+function drawTrack(timestamp) {
   drawBackground();
   drawBrickWalls(state.course.wallRects);
   drawCells(state.course.pathRects, COLORS.path);
+  drawBreakWalls(state.course.breakWalls ?? []);
+  drawMovingWalls(state.course.movingWalls ?? [], timestamp);
 
   drawStartAndGoal();
 }
@@ -1280,9 +1524,9 @@ function drawRacers() {
     context.translate(racer.x + racer.size * 0.5, racer.y + racer.size * 0.5);
     context.rotate(Math.atan2(racer.vy, racer.vx));
     context.scale(racer.squishX, racer.squishY);
-    context.shadowColor = `${racer.color}99`;
+    context.shadowColor = racer.eliminated ? "rgba(20,20,20,0.35)" : `${racer.color}99`;
     context.shadowBlur = 14;
-    context.fillStyle = racer.color;
+    context.fillStyle = racer.eliminated ? "#6f655f" : racer.color;
     context.fillRect(-racer.size * 0.5, -racer.size * 0.5, racer.size, racer.size);
     context.shadowBlur = 0;
     context.strokeStyle = "#fff8ef";
@@ -1318,6 +1562,17 @@ function drawRacers() {
     context.fillStyle = "#fff8ef";
     context.font = 'bold 10px "Space Grotesk"';
     context.fillText(racer.label, racer.x - 2, racer.y - 8);
+
+    if (racer.eliminated) {
+      context.strokeStyle = "#171717";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(racer.x - 1, racer.y - 1);
+      context.lineTo(racer.x + racer.size + 1, racer.y + racer.size + 1);
+      context.moveTo(racer.x + racer.size + 1, racer.y - 1);
+      context.lineTo(racer.x - 1, racer.y + racer.size + 1);
+      context.stroke();
+    }
   }
 }
 
@@ -1339,14 +1594,18 @@ function drawOverlay() {
     40,
     74
   );
-  context.fillText(`${state.preset.label} / width ${state.course.widthMode.label} / first goal wins`, 40, 92);
+  context.fillText(
+    `${state.preset.label} / width ${state.course.widthMode.label} / branch ${state.course.branchCount} / first goal wins`,
+    40,
+    92
+  );
 
   context.fillStyle = COLORS.ink;
   context.font = 'bold 22px "Space Grotesk"';
   context.fillText(formatTime(state.elapsed), canvas.width - 112, 52);
   context.font = '14px "IBM Plex Sans JP"';
   context.fillStyle = COLORS.muted;
-  context.fillText(`${state.racers.length} racers`, canvas.width - 112, 76);
+  context.fillText(`${state.racers.filter((racer) => !racer.eliminated).length} racers`, canvas.width - 112, 76);
   context.fillText(`speed ${Number(simSpeedInput.value).toFixed(1)}x`, canvas.width - 112, 94);
 
   const liveOrder = [...state.finishedOrder];
@@ -1410,7 +1669,7 @@ function draw(timestamp = performance.now()) {
     return;
   }
 
-  drawTrack();
+  drawTrack(timestamp);
   drawRacers();
   drawOverlay();
   drawWinnerBanner(timestamp);
@@ -1527,6 +1786,12 @@ function applyLoadedCourse(payload) {
   pathLengthValue.textContent = pathLengthInput.value;
   widthVarianceInput.value = String(payload.widthVariance ?? widthVarianceInput.value);
   updateWidthVarianceLabel();
+  branchRateInput.value = String(payload.branchRate ?? branchRateInput.value);
+  updateBranchRateLabel();
+  breakWallCountInput.value = String(payload.breakWallCount ?? breakWallCountInput.value);
+  updateBreakWallLabel();
+  movingWallCountInput.value = String(payload.movingWallCount ?? movingWallCountInput.value);
+  updateMovingWallLabel();
 
   state.course = {
     title: "SHIKAKU RACE",
@@ -1538,6 +1803,10 @@ function applyLoadedCourse(payload) {
     targetLength: Number(payload.targetLength ?? pathLengthInput.value),
     actualLength: Number(payload.actualLength ?? pathLengthInput.value),
     widthVariance: Number(payload.widthVariance ?? widthVarianceInput.value),
+    branchRate: Number(payload.branchRate ?? branchRateInput.value),
+    breakWallCount: Number(payload.breakWallCount ?? breakWallCountInput.value),
+    movingWallCount: Number(payload.movingWallCount ?? movingWallCountInput.value),
+    branchCount: Number(payload.branchCount ?? 0),
     widthMode: payload.widthMode ?? getWidthMode(Number(payload.widthVariance ?? widthVarianceInput.value)),
     racerSpeed: Number(payload.racerSpeed ?? clamp((payload.cellSize ?? 20) * 4.5, 90, 170)),
     cellSize: payload.cellSize,
@@ -1547,7 +1816,9 @@ function applyLoadedCourse(payload) {
     startRect: payload.startRect,
     finishRect: payload.finishRect,
     pathRects: payload.pathRects ?? [],
-    wallRects: payload.wallRects ?? []
+    wallRects: payload.wallRects ?? [],
+    breakWalls: payload.breakWalls ?? [],
+    movingWalls: payload.movingWalls ?? []
   };
 
   seedInput.value = String(state.course.seed);
@@ -1568,6 +1839,9 @@ outputPresetSelect.value = OUTPUT_PRESETS[0].id;
 courseStyleSelect.value = "variety";
 recordFormat.textContent = getRecordingProfile()?.label ?? "未対応";
 updateWidthVarianceLabel();
+updateBranchRateLabel();
+updateBreakWallLabel();
+updateMovingWallLabel();
 setCanvasPreset(outputPresetSelect.value);
 generateCourse(seedInput.value);
 
@@ -1586,6 +1860,18 @@ pathLengthInput.addEventListener("input", () => {
 
 widthVarianceInput.addEventListener("input", () => {
   updateWidthVarianceLabel();
+});
+
+branchRateInput.addEventListener("input", () => {
+  updateBranchRateLabel();
+});
+
+breakWallCountInput.addEventListener("input", () => {
+  updateBreakWallLabel();
+});
+
+movingWallCountInput.addEventListener("input", () => {
+  updateMovingWallLabel();
 });
 
 outputPresetSelect.addEventListener("change", () => {

@@ -92,6 +92,21 @@
               <strong id="widthVarianceValue">1-2マス</strong>
             </label>
             <label class="field">
+              <span>分岐率</span>
+              <input id="branchRate" type="range" min="0" max="100" step="5" value="35" />
+              <strong id="branchRateValue">35%</strong>
+            </label>
+            <label class="field">
+              <span>壊れる壁</span>
+              <input id="breakWallCount" type="range" min="0" max="2" step="1" value="1" />
+              <strong id="breakWallCountValue">1</strong>
+            </label>
+            <label class="field">
+              <span>動く壁</span>
+              <input id="movingWallCount" type="range" min="0" max="2" step="1" value="1" />
+              <strong id="movingWallCountValue">1</strong>
+            </label>
+            <label class="field">
               <span>Seed</span>
               <div class="inline-row">
                 <input id="seedInput" type="number" value="42" />
@@ -107,7 +122,7 @@
           <div class="panel-card">
             <h2>Course Notes</h2>
             <p class="panel-note">
-              コースは `15 x 20` グリッド上に自動生成します。各レーサーには `2 x 2`
+              コースは `15 x 20` グリッド上に自動生成します。各レーサーには `1 x 1`
               の個別スタート枠があり、ゴールは `2 x 2`、内部は `4 x 4`
               の白黒チェッカーで表示します。
             </p>
@@ -118,6 +133,10 @@
             <p class="panel-note">
               道幅モードは `1`, `1-2`, `1-3` マス帯を切り替えます。狭い道が増えるほど、
               レーサーがぶつかりやすく、難易度が上がります。
+            </p>
+            <p class="panel-note">
+              分岐率は主経路から別ルートがどれだけ生えるかを制御します。壊れる壁は 1 回ぶつかると消え、
+              動く壁は触れると脱落扱いになります。
             </p>
           </div>
 
