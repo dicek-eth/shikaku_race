@@ -515,34 +515,34 @@ function carvePolyline(grid, points, width) {
   });
 }
 
-function buildBottomStartZones(count, laneLeft, laneRight, laneTop, laneWidth) {
+function buildBottomStartZones(count, laneLeft, laneRight, pocketBottom) {
   const usableWidth = laneRight - laneLeft + 1;
   const gap = usableWidth >= count * 2 ? 1 : 0;
   const totalWidth = count + (count - 1) * gap;
   const startLeft = laneLeft + Math.max(0, Math.floor((usableWidth - totalWidth) * 0.5));
-  const row = laneTop + Math.floor(laneWidth * 0.5);
 
   return Array.from({ length: count }, (_, index) => ({
     x: startLeft + index * (1 + gap),
-    y: row,
+    y: pocketBottom,
     width: 1,
     height: 1
   }));
 }
 
-function buildSwitchbackPath(startX, laneCenters, goalX) {
-  const path = [{ x: startX, y: laneCenters[laneCenters.length - 1] }];
+function buildSwitchbackPath(startX, laneSpecs, goalX) {
+  const path = [{ x: startX, y: laneSpecs[laneSpecs.length - 1].center }];
   let current = { ...path[0] };
   let moveRight = true;
 
-  for (let laneIndex = laneCenters.length - 1; laneIndex >= 0; laneIndex -= 1) {
-    const laneY = laneCenters[laneIndex];
+  for (let laneIndex = laneSpecs.length - 1; laneIndex >= 0; laneIndex -= 1) {
+    const lane = laneSpecs[laneIndex];
+    const laneY = lane.center;
     const targetX =
       laneIndex === 0
         ? goalX
         : moveRight
-          ? GRID_COLS - INNER_MARGIN - 2
-          : INNER_MARGIN + 1;
+          ? lane.right
+          : lane.left;
 
     while (current.x !== targetX) {
       current = { x: current.x + Math.sign(targetX - current.x), y: laneY };
@@ -550,7 +550,7 @@ function buildSwitchbackPath(startX, laneCenters, goalX) {
     }
 
     if (laneIndex > 0) {
-      const nextY = laneCenters[laneIndex - 1];
+      const nextY = laneSpecs[laneIndex - 1].center;
       while (current.y !== nextY) {
         current = { x: current.x, y: current.y + Math.sign(nextY - current.y) };
         pushPoint(path, current);
@@ -626,26 +626,29 @@ function buildBreakWalls(path, widths, count, cellSize, offsetX, offsetY) {
     .filter(({ point, width, index }) => width >= 1 && index > Math.floor(path.length * 0.28) && index < Math.floor(path.length * 0.88));
 
   const walls = [];
-  for (let index = 0; index < Math.min(count, candidates.length); index += 1) {
-    const candidate = candidates[Math.floor(((index + 1) * candidates.length) / (Math.min(count, candidates.length) + 1))];
+  const barrierCount = Math.min(count, candidates.length);
+  for (let index = 0; index < barrierCount; index += 1) {
+    const candidate = candidates[Math.floor(((index + 1) * candidates.length) / (barrierCount + 1))];
     const topCell = clamp(candidate.point.y - Math.floor((candidate.width - 1) * 0.5), 0, GRID_ROWS - candidate.width);
-    walls.push({
-      cellX: candidate.point.x,
-      cellY: candidate.point.y,
-      x: offsetX + candidate.point.x * cellSize,
-      y: offsetY + topCell * cellSize,
-      width: cellSize,
-      height: cellSize * candidate.width,
-      broken: false
-    });
+    for (let step = 0; step < candidate.width; step += 1) {
+      walls.push({
+        cellX: candidate.point.x,
+        cellY: topCell + step,
+        x: offsetX + candidate.point.x * cellSize,
+        y: offsetY + (topCell + step) * cellSize,
+        width: cellSize,
+        height: cellSize,
+        broken: false
+      });
+    }
   }
   return walls;
 }
 
 function buildMovingWalls(pathCells, count, randomFn) {
   return Array.from({ length: count }, (_, index) => ({
-    speed: 2.2 + randomFn() * 0.7 + index * 0.25,
-    delay: index * 2.4
+    speed: 0.08 + randomFn() * 0.02 + index * 0.01,
+    delay: index * 5
   }));
 }
 
@@ -654,33 +657,61 @@ function buildSwitchbackCourseCandidate(seedValue, attempt, targetLength, widthV
   const seed = Number(seedValue) || 1;
   const randomFn = mulberry32(seededAttempt(seed, attempt));
   const widthMode = getWidthMode(widthVariance);
-  const laneWidth = clamp(widthMode.max, 2, 3);
+  const maxLaneWidth = clamp(widthMode.max, 1, 3);
   const laneCount = 4;
   const laneGap = 2;
-  const topOffset = Math.max(INNER_MARGIN, Math.floor((GRID_ROWS - (laneCount * laneWidth + (laneCount - 1) * laneGap)) * 0.5));
-  const laneTops = Array.from({ length: laneCount }, (_, index) => topOffset + index * (laneWidth + laneGap));
-  const laneCenters = laneTops.map((top) => top + Math.floor(laneWidth * 0.5));
-  const laneLeft = INNER_MARGIN + 1;
-  const laneRight = GRID_COLS - INNER_MARGIN - 2;
+  const pocketDepth = 4;
+  const laneBaseTop = Math.max(INNER_MARGIN, Math.floor((GRID_ROWS - (laneCount * maxLaneWidth + (laneCount - 1) * laneGap + pocketDepth)) * 0.5));
+  const laneTops = Array.from({ length: laneCount }, (_, index) => laneBaseTop + index * (maxLaneWidth + laneGap));
+  const laneSpecs = [];
+  const laneLeftBound = INNER_MARGIN + 1;
+  const laneRightBound = GRID_COLS - INNER_MARGIN - 2;
+  const laneWidths = Array.from({ length: laneCount }, (_, index) =>
+    clamp(randomInt(randomFn, 1, maxLaneWidth), index === laneCount - 1 ? 2 : 1, maxLaneWidth)
+  );
+
+  const bottomRight = laneRightBound - randomInt(randomFn, 0, 1);
+  const secondLeft = laneLeftBound + randomInt(randomFn, 0, 2);
+  const thirdRight = laneRightBound - randomInt(randomFn, 1, 3);
+  const topGoalRight = thirdRight;
+  laneSpecs.push({ top: laneTops[0], width: laneWidths[0], left: laneLeftBound, right: topGoalRight });
+  laneSpecs.push({ top: laneTops[1], width: laneWidths[1], left: secondLeft, right: topGoalRight });
+  laneSpecs.push({ top: laneTops[2], width: laneWidths[2], left: secondLeft, right: bottomRight });
+  laneSpecs.push({ top: laneTops[3], width: laneWidths[3], left: laneLeftBound + 1, right: bottomRight });
+  laneSpecs.forEach((lane) => {
+    lane.center = lane.top + Math.floor(lane.width * 0.5);
+  });
+
   const goalLeft = INNER_MARGIN;
-  const goalTop = laneTops[0];
-  const startZones = buildBottomStartZones(racerCount, laneLeft, laneRight, laneTops[laneCount - 1], laneWidth);
+  const goalTop = laneSpecs[0].top;
+  const pocketBottom = GRID_ROWS - 1;
+  const pocketTop = laneSpecs[laneCount - 1].top + laneSpecs[laneCount - 1].width;
+  const startZones = buildBottomStartZones(racerCount, laneSpecs[laneCount - 1].left + 1, laneSpecs[laneCount - 1].right - 1, pocketBottom);
   const startX = startZones[0].x;
   const grid = createMatrix(GRID_ROWS, GRID_COLS, false);
 
-  laneTops.forEach((top) => {
-    carveRect(grid, laneLeft, top, laneRight - laneLeft + 1, laneWidth);
+  laneSpecs.forEach((lane) => {
+    carveRect(grid, lane.left, lane.top, lane.right - lane.left + 1, lane.width);
   });
 
   startZones.forEach((zone) => {
-    carveRect(grid, zone.x, zone.y, 1, 1);
+    carveRect(grid, zone.x, pocketTop, 1, pocketBottom - pocketTop + 1);
   });
 
   carveRect(grid, goalLeft, goalTop, FINISH_SIZE, FINISH_SIZE);
 
-  const path = buildSwitchbackPath(startX, laneCenters, goalLeft + 1);
-  const widths = path.map(() => laneWidth);
-  carvePolyline(grid, path, laneWidth);
+  const path = buildSwitchbackPath(startX, laneSpecs, goalLeft + 1);
+  const widths = path.map((point) => {
+    const lane = laneSpecs.find((entry) => point.y >= entry.top && point.y < entry.top + entry.width);
+    return lane?.width ?? maxLaneWidth;
+  });
+  path.forEach((point, index) => {
+    const width = widths[index];
+    carveCentered(grid, point, width);
+    if (index > 0) {
+      carveConnection(grid, path[index - 1], point, Math.max(widths[index - 1], width));
+    }
+  });
   const branches = buildBranches(grid, path, branchRate, widthMode, randomFn);
 
   const cellSize = Math.floor(Math.min(play.width / GRID_COLS, play.height / GRID_ROWS));
@@ -1327,7 +1358,8 @@ function triggerSquish(racer, axis, intensity = 1) {
 }
 
 function getFloodProgress(wall, elapsed) {
-  return Math.max(0, Math.floor((elapsed - wall.delay) * wall.speed));
+  const raw = Math.max(0, (elapsed - wall.delay) * wall.speed);
+  return Math.floor(raw * 10) / 10;
 }
 
 function isCellFlooded(course, col, row) {
@@ -1336,7 +1368,7 @@ function isCellFlooded(course, col, row) {
   if (index === undefined) {
     return false;
   }
-  return (course.movingWalls ?? []).some((wall) => getFloodProgress(wall, state.elapsed) >= index);
+  return (course.movingWalls ?? []).some((wall) => getFloodProgress(wall, state.elapsed) >= index + 1);
 }
 
 function isRacerTrappedByFlood(course, racer) {
@@ -1674,13 +1706,23 @@ function drawBreakWalls(rects) {
 function drawMovingWalls(rects, timestamp) {
   rects.forEach((wall, wallIndex) => {
     const progress = getFloodProgress(wall, state.elapsed);
-    const count = Math.min(progress, state.course.mainPathCells?.length ?? 0);
-    for (let index = 0; index < count; index += 1) {
+    const fullCells = Math.min(Math.floor(progress), state.course.mainPathCells?.length ?? 0);
+    const partial = Math.max(0, Math.min(1, progress - fullCells));
+    for (let index = 0; index < fullCells; index += 1) {
       const cell = state.course.mainPathCells[index];
       const width = state.course.pathWidthMap?.[`${cell.x},${cell.y}`] ?? 1;
       const x = state.course.playfield.left + cell.x * state.course.cellSize;
       const y = state.course.playfield.top + (cell.y - Math.floor((width - 1) * 0.5)) * state.course.cellSize;
       context.fillStyle = wallIndex % 2 === 0 ? "rgba(74, 102, 210, 0.42)" : "rgba(44, 170, 208, 0.34)";
+      context.fillRect(x, y, state.course.cellSize, state.course.cellSize * width);
+    }
+
+    if (partial > 0 && fullCells < (state.course.mainPathCells?.length ?? 0)) {
+      const cell = state.course.mainPathCells[fullCells];
+      const width = state.course.pathWidthMap?.[`${cell.x},${cell.y}`] ?? 1;
+      const x = state.course.playfield.left + cell.x * state.course.cellSize;
+      const y = state.course.playfield.top + (cell.y - Math.floor((width - 1) * 0.5)) * state.course.cellSize;
+      context.fillStyle = wallIndex % 2 === 0 ? `rgba(74, 102, 210, ${0.16 + partial * 0.22})` : `rgba(44, 170, 208, ${0.14 + partial * 0.2})`;
       context.fillRect(x, y, state.course.cellSize, state.course.cellSize * width);
     }
   });
