@@ -1367,7 +1367,7 @@ function getMovingWallProgress(wall, elapsed) {
 function getMovingFillRects(course, wall, elapsed) {
   const progress = getMovingWallProgress(wall, elapsed);
   if (progress <= 0) {
-    return [];
+    return { fillRects: [], leadingRects: [] };
   }
 
   const fillRects = [];
