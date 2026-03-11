@@ -557,8 +557,8 @@ function buildCourse(styleId, seedValue) {
     gridSize: GRID_SIZE,
     targetLength,
     actualLength,
-    timeLimit: clamp(Math.ceil((actualLength / 4.5) * 3.2), 18, 60),
     widthVariance,
+    racerSpeed: clamp(cellSize * 4.5, 90, 170),
     cellSize,
     passableGrid: grid,
     playfield: {
@@ -607,8 +607,8 @@ function syncCourseJson() {
       gridSize: state.course.gridSize,
       targetLength: state.course.targetLength,
       actualLength: state.course.actualLength,
-      timeLimit: state.course.timeLimit,
       widthVariance: state.course.widthVariance,
+      racerSpeed: state.course.racerSpeed,
       cellSize: state.course.cellSize,
       passableGrid: state.course.passableGrid,
       playfield: state.course.playfield,
@@ -666,12 +666,12 @@ function renderPodium() {
 
 function createRacers(count) {
   const start = state.course.startRect;
+  const speed = state.course.racerSpeed;
   return Array.from({ length: count }, (_, index) => {
     const palette = RACER_PALETTE[index];
     const size = clamp(state.course.cellSize * 0.52, 10, 18);
     const laneHeight = start.height / count;
     const angle = (Math.random() - 0.5) * 0.24;
-    const speed = clamp(state.course.cellSize * 4.5, 90, 170);
     return {
       id: index + 1,
       label: `SQ-${String(index + 1).padStart(2, "0")}`,
@@ -681,6 +681,7 @@ function createRacers(count) {
       x: start.x + 6 + (index % 2) * 8,
       y: start.y + laneHeight * index + laneHeight * 0.5 - size * 0.5,
       size,
+      speed,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       lastSafeX: start.x + 6 + (index % 2) * 8,
@@ -780,6 +781,28 @@ function recoverRacerToCourse(racer) {
     racer.vy *= -0.92;
     racer.vx *= 0.88;
   }
+
+  normalizeRacerSpeed(racer);
+}
+
+function normalizeRacerSpeed(racer) {
+  const magnitude = Math.hypot(racer.vx, racer.vy);
+  if (magnitude === 0) {
+    racer.vx = racer.speed;
+    racer.vy = 0;
+    return;
+  }
+
+  racer.vx = (racer.vx / magnitude) * racer.speed;
+  racer.vy = (racer.vy / magnitude) * racer.speed;
+}
+
+function reflectVelocity(vx, vy, nx, ny) {
+  const dot = vx * nx + vy * ny;
+  return {
+    vx: vx - 2 * dot * nx,
+    vy: vy - 2 * dot * ny
+  };
 }
 
 function bounceOnAxis(racer, wall, axis) {
@@ -799,6 +822,8 @@ function bounceOnAxis(racer, wall, axis) {
     racer.vy *= -restitution;
     playCollisionTone(racer, impactSpeed);
   }
+
+  normalizeRacerSpeed(racer);
 }
 
 function handleRacerCollisions() {
@@ -847,15 +872,16 @@ function handleRacerCollisions() {
         racerB.x += nx * overlap * 0.5;
         racerB.y += ny * overlap * 0.5;
 
-        const relativeVelocityX = racerA.vx - racerB.vx;
-        const relativeVelocityY = racerA.vy - racerB.vy;
-        const speedAlongNormal = relativeVelocityX * nx + relativeVelocityY * ny;
-        const impulse = speedAlongNormal < 0 ? (-1.08 * speedAlongNormal) / 2 : 6;
+        const reflectedA = reflectVelocity(racerA.vx, racerA.vy, -nx, -ny);
+        const reflectedB = reflectVelocity(racerB.vx, racerB.vy, nx, ny);
 
-        racerA.vx += impulse * nx;
-        racerA.vy += impulse * ny;
-        racerB.vx -= impulse * nx;
-        racerB.vy -= impulse * ny;
+        racerA.vx = reflectedA.vx - nx * 8;
+        racerA.vy = reflectedA.vy - ny * 8;
+        racerB.vx = reflectedB.vx + nx * 8;
+        racerB.vy = reflectedB.vy + ny * 8;
+
+        normalizeRacerSpeed(racerA);
+        normalizeRacerSpeed(racerB);
       }
     }
   }
@@ -864,7 +890,6 @@ function handleRacerCollisions() {
 function updateRace(deltaSeconds) {
   const dt = deltaSeconds * Number(simSpeedInput.value);
   const play = state.course.playfield;
-  const maxTime = state.course.timeLimit;
   state.elapsed += dt;
   raceTimer.textContent = formatTime(state.elapsed);
 
@@ -911,10 +936,8 @@ function updateRace(deltaSeconds) {
 
   handleRacerCollisions();
 
-  if (state.finishedOrder.length === state.racers.length && state.racers.length > 0) {
-    finishRace("全員ゴール");
-  } else if (state.elapsed >= maxTime) {
-    finishRace("タイムアップ");
+  if (state.finishedOrder.length >= 1) {
+    finishRace("勝者確定");
   }
 }
 
@@ -980,25 +1003,41 @@ function drawTrack() {
 function drawRacers() {
   for (const racer of state.racers) {
     if (racer.trail.length > 1) {
-      context.strokeStyle = `${racer.color}4a`;
-      context.lineWidth = 2.5;
-      context.beginPath();
-      racer.trail.forEach((point, index) => {
-        if (index === 0) {
-          context.moveTo(point.x, point.y);
-        } else {
-          context.lineTo(point.x, point.y);
-        }
-      });
-      context.stroke();
+      for (let index = 0; index < racer.trail.length; index += 1) {
+        const point = racer.trail[index];
+        const ratio = index / racer.trail.length;
+        const radius = Math.max(2, racer.size * (0.14 + ratio * 0.18));
+        const alpha = 0.08 + ratio * 0.24;
+        context.fillStyle =
+          index % 2 === 0
+            ? `rgba(255, 215, 110, ${alpha})`
+            : `rgba(255, 122, 69, ${alpha})`;
+        context.beginPath();
+        context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        context.fill();
+      }
     }
 
     context.save();
     context.translate(racer.x + racer.size * 0.5, racer.y + racer.size * 0.5);
     context.rotate(Math.atan2(racer.vy, racer.vx));
+    context.shadowColor = `${racer.color}99`;
+    context.shadowBlur = 14;
     context.fillStyle = racer.color;
     context.fillRect(-racer.size * 0.5, -racer.size * 0.5, racer.size, racer.size);
+    context.shadowBlur = 0;
+    context.strokeStyle = "#fff8ef";
+    context.lineWidth = 2;
+    context.strokeRect(-racer.size * 0.5, -racer.size * 0.5, racer.size, racer.size);
+    context.fillStyle = "#fff8ef";
+    context.fillRect(racer.size * 0.04, -racer.size * 0.14, racer.size * 0.18, racer.size * 0.28);
+    context.fillStyle = "#171717";
+    context.fillRect(-racer.size * 0.16, -racer.size * 0.16, racer.size * 0.28, racer.size * 0.32);
     context.restore();
+
+    context.fillStyle = "#171717";
+    context.font = 'bold 11px "Space Grotesk"';
+    context.fillText(racer.id, racer.x + racer.size * 0.28, racer.y + racer.size * 0.68);
   }
 }
 
@@ -1016,7 +1055,7 @@ function drawOverlay() {
     40,
     74
   );
-  context.fillText(`${state.preset.label} / limit ${state.course.timeLimit}s`, 40, 92);
+  context.fillText(`${state.preset.label} / first goal wins`, 40, 92);
 
   context.fillStyle = COLORS.ink;
   context.font = 'bold 22px "Space Grotesk"';
@@ -1183,8 +1222,8 @@ function applyLoadedCourse(payload) {
     gridSize: payload.gridSize ?? GRID_SIZE,
     targetLength: Number(payload.targetLength ?? pathLengthInput.value),
     actualLength: Number(payload.actualLength ?? pathLengthInput.value),
-    timeLimit: Number(payload.timeLimit ?? Math.ceil((Number(payload.actualLength ?? pathLengthInput.value) / 4.5) * 3.2)),
     widthVariance: Number(payload.widthVariance ?? widthVarianceInput.value),
+    racerSpeed: Number(payload.racerSpeed ?? clamp((payload.cellSize ?? 20) * 4.5, 90, 170)),
     cellSize: payload.cellSize,
     passableGrid: rebuildPassableGrid(payload),
     playfield: payload.playfield,
