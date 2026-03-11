@@ -17,8 +17,7 @@ const branchRateInput = document.getElementById("branchRate");
 const branchRateValue = document.getElementById("branchRateValue");
 const breakWallCountInput = document.getElementById("breakWallCount");
 const breakWallCountValue = document.getElementById("breakWallCountValue");
-const movingWallCountInput = document.getElementById("movingWallCount");
-const movingWallCountValue = document.getElementById("movingWallCountValue");
+const movingWallDirectionInput = document.getElementById("movingWallDirection");
 const seedInput = document.getElementById("seedInput");
 const randomSeedButton = document.getElementById("randomSeedButton");
 const generateCourseButton = document.getElementById("generateCourseButton");
@@ -438,10 +437,6 @@ function updateBreakWallLabel() {
   breakWallCountValue.textContent = breakWallCountInput.value;
 }
 
-function updateMovingWallLabel() {
-  movingWallCountValue.textContent = movingWallCountInput.value;
-}
-
 function getRectCells(rect) {
   const cells = [];
   for (let row = rect.y; row < rect.y + rect.height; row += 1) {
@@ -620,22 +615,70 @@ function buildBranches(grid, path, branchRate, widthMode, randomFn) {
   return branches;
 }
 
-function buildBreakWalls(path, widths, count, cellSize, offsetX, offsetY) {
-  const candidates = path
-    .map((point, index) => ({ point, index, width: widths[index] }))
-    .filter(({ point, width, index }) => width >= 1 && index > Math.floor(path.length * 0.28) && index < Math.floor(path.length * 0.88));
+function getPathSegmentDirection(path, index) {
+  const prev = path[Math.max(0, index - 1)];
+  const next = path[Math.min(path.length - 1, index + 1)];
+  const dx = next.x - prev.x;
+  const dy = next.y - prev.y;
+  return Math.abs(dx) >= Math.abs(dy) ? "horizontal" : "vertical";
+}
 
+function collectBarrierCells(grid, point, orientation) {
+  const cells = [];
+
+  if (orientation === "horizontal") {
+    let row = point.y;
+    while (row >= 0 && grid[row][point.x]) {
+      row -= 1;
+    }
+    row += 1;
+    while (row < GRID_ROWS && grid[row][point.x]) {
+      cells.push({ x: point.x, y: row });
+      row += 1;
+    }
+    return cells;
+  }
+
+  let col = point.x;
+  while (col >= 0 && grid[point.y][col]) {
+    col -= 1;
+  }
+  col += 1;
+  while (col < GRID_COLS && grid[point.y][col]) {
+    cells.push({ x: col, y: point.y });
+    col += 1;
+  }
+
+  return cells;
+}
+
+function buildBreakWalls(grid, path, count, cellSize, offsetX, offsetY) {
+  const candidates = path
+    .map((point, index) => ({ point, index }))
+    .filter(({ index }) => index > Math.floor(path.length * 0.18) && index < Math.floor(path.length * 0.9));
   const walls = [];
+  const used = new Set();
   const barrierCount = Math.min(count, candidates.length);
+
   for (let index = 0; index < barrierCount; index += 1) {
     const candidate = candidates[Math.floor(((index + 1) * candidates.length) / (barrierCount + 1))];
-    const topCell = clamp(candidate.point.y - Math.floor((candidate.width - 1) * 0.5), 0, GRID_ROWS - candidate.width);
-    for (let step = 0; step < candidate.width; step += 1) {
+    const orientation = getPathSegmentDirection(path, candidate.index);
+    const barrierCells = collectBarrierCells(grid, candidate.point, orientation === "horizontal" ? "horizontal" : "vertical");
+    if (barrierCells.length === 0) {
+      continue;
+    }
+    const key = barrierCells.map((cell) => `${cell.x},${cell.y}`).join("|");
+    if (used.has(key)) {
+      continue;
+    }
+    used.add(key);
+
+    for (const cell of barrierCells) {
       walls.push({
-        cellX: candidate.point.x,
-        cellY: topCell + step,
-        x: offsetX + candidate.point.x * cellSize,
-        y: offsetY + (topCell + step) * cellSize,
+        cellX: cell.x,
+        cellY: cell.y,
+        x: offsetX + cell.x * cellSize,
+        y: offsetY + cell.y * cellSize,
         width: cellSize,
         height: cellSize,
         broken: false
@@ -645,14 +688,30 @@ function buildBreakWalls(path, widths, count, cellSize, offsetX, offsetY) {
   return walls;
 }
 
-function buildMovingWalls(pathCells, count, randomFn) {
-  return Array.from({ length: count }, (_, index) => ({
-    speed: 0.08 + randomFn() * 0.02 + index * 0.01,
-    delay: index * 5
-  }));
+function buildMovingWalls(direction, randomFn) {
+  if (direction === "none") {
+    return [];
+  }
+
+  return [
+    {
+      direction,
+      speed: 0.07 + randomFn() * 0.015,
+      delay: 0
+    }
+  ];
 }
 
-function buildSwitchbackCourseCandidate(seedValue, attempt, targetLength, widthVariance, branchRate, breakWallCount, movingWallCount, racerCount) {
+function buildSwitchbackCourseCandidate(
+  seedValue,
+  attempt,
+  targetLength,
+  widthVariance,
+  branchRate,
+  breakWallCount,
+  movingWallDirection,
+  racerCount
+) {
   const play = getPlayfield();
   const seed = Number(seedValue) || 1;
   const randomFn = mulberry32(seededAttempt(seed, attempt));
@@ -752,8 +811,8 @@ function buildSwitchbackCourseCandidate(seedValue, attempt, targetLength, widthV
     width: FINISH_SIZE,
     height: FINISH_SIZE
   });
-  const breakWalls = buildBreakWalls(path, widths, breakWallCount, cellSize, offsetX, offsetY);
-  const movingWalls = buildMovingWalls(mainPathCells, movingWallCount, randomFn);
+  const breakWalls = buildBreakWalls(grid, path, breakWallCount, cellSize, offsetX, offsetY);
+  const movingWalls = buildMovingWalls(movingWallDirection, randomFn);
 
   return {
     title: "SHIKAKU RACE",
@@ -767,10 +826,10 @@ function buildSwitchbackCourseCandidate(seedValue, attempt, targetLength, widthV
     widthVariance,
     branchRate,
     breakWallCount,
-    movingWallCount,
+    movingWallCount: movingWalls.length,
     branchCount: branches.length,
     widthMode,
-    movingWallDirection: "up",
+    movingWallDirection,
     racerSpeed: clamp(cellSize * 4.5, 90, 170),
     cellSize,
     passableGrid: grid,
@@ -927,7 +986,17 @@ function buildWidths(profile, path, varianceRate, randomFn) {
   return widths;
 }
 
-function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVariance, branchRate, breakWallCount, movingWallCount, racerCount) {
+function buildCourseCandidate(
+  styleId,
+  seedValue,
+  attempt,
+  targetLength,
+  widthVariance,
+  branchRate,
+  breakWallCount,
+  movingWallDirection,
+  racerCount
+) {
   if (styleId === "switchback") {
     return buildSwitchbackCourseCandidate(
       seedValue,
@@ -936,7 +1005,7 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
       widthVariance,
       branchRate,
       breakWallCount,
-      movingWallCount,
+      movingWallDirection,
       racerCount
     );
   }
@@ -1022,8 +1091,8 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
     width: FINISH_SIZE,
     height: FINISH_SIZE
   });
-  const breakWalls = buildBreakWalls(path, widths, breakWallCount, cellSize, offsetX, offsetY);
-  const movingWalls = buildMovingWalls(mainPathCells, movingWallCount, randomFn);
+  const breakWalls = buildBreakWalls(grid, path, breakWallCount, cellSize, offsetX, offsetY);
+  const movingWalls = buildMovingWalls(movingWallDirection, randomFn);
 
   return {
     title: "SHIKAKU RACE",
@@ -1037,10 +1106,10 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
     widthVariance,
     branchRate,
     breakWallCount,
-    movingWallCount,
+    movingWallCount: movingWalls.length,
     branchCount: branches.length,
     widthMode,
-    movingWallDirection: "right",
+    movingWallDirection,
     racerSpeed: clamp(cellSize * 4.5, 90, 170),
     cellSize,
     passableGrid: grid,
@@ -1075,7 +1144,7 @@ function buildCourse(styleId, seedValue) {
   const widthVariance = Number(widthVarianceInput.value);
   const branchRate = Number(branchRateInput.value);
   const breakWallCount = Number(breakWallCountInput.value);
-  const movingWallCount = Number(movingWallCountInput.value);
+  const movingWallDirection = movingWallDirectionInput.value;
   const racerCount = Number(racerCountInput.value);
   let bestCandidate = null;
 
@@ -1088,7 +1157,7 @@ function buildCourse(styleId, seedValue) {
       widthVariance,
       branchRate,
       breakWallCount,
-      movingWallCount,
+      movingWallDirection,
       racerCount
     );
     if (Number.isFinite(candidate.actualLength) && (!bestCandidate || candidate.actualLength > bestCandidate.actualLength)) {
@@ -1101,7 +1170,7 @@ function buildCourse(styleId, seedValue) {
 
   return (
     bestCandidate ??
-    buildCourseCandidate(styleId, seedValue, 0, targetLength, widthVariance, branchRate, breakWallCount, movingWallCount, racerCount)
+    buildCourseCandidate(styleId, seedValue, 0, targetLength, widthVariance, branchRate, breakWallCount, movingWallDirection, racerCount)
   );
 }
 
@@ -1393,7 +1462,16 @@ function getMovingFillRects(course, wall, elapsed) {
           fillRects.push({ x: rectX, y: rectY + course.cellSize - height, width: course.cellSize, height });
           leadingRects.push({ x: rectX, y: rectY + course.cellSize - height, width: course.cellSize, height });
         }
-      } else {
+      } else if (wall.direction === "down") {
+        const depth = row;
+        if (depth < fullCells) {
+          fillRects.push({ x: rectX, y: rectY, width: course.cellSize, height: course.cellSize });
+        } else if (depth === fullCells && partial > 0) {
+          const height = course.cellSize * partial;
+          fillRects.push({ x: rectX, y: rectY, width: course.cellSize, height });
+          leadingRects.push({ x: rectX, y: rectY, width: course.cellSize, height });
+        }
+      } else if (wall.direction === "right") {
         const depth = col;
         if (depth < fullCells) {
           fillRects.push({ x: rectX, y: rectY, width: course.cellSize, height: course.cellSize });
@@ -1401,6 +1479,15 @@ function getMovingFillRects(course, wall, elapsed) {
           const width = course.cellSize * partial;
           fillRects.push({ x: rectX, y: rectY, width, height: course.cellSize });
           leadingRects.push({ x: rectX, y: rectY, width, height: course.cellSize });
+        }
+      } else if (wall.direction === "left") {
+        const depth = course.gridCols - 1 - col;
+        if (depth < fullCells) {
+          fillRects.push({ x: rectX, y: rectY, width: course.cellSize, height: course.cellSize });
+        } else if (depth === fullCells && partial > 0) {
+          const width = course.cellSize * partial;
+          fillRects.push({ x: rectX + course.cellSize - width, y: rectY, width, height: course.cellSize });
+          leadingRects.push({ x: rectX + course.cellSize - width, y: rectY, width, height: course.cellSize });
         }
       }
     }
@@ -1419,7 +1506,10 @@ function collidesWithStaticBoundsOrWalls(course, racer) {
     return true;
   }
 
-  return course.wallRects.some((wall) => intersectsRect(racer, wall));
+  return (
+    course.wallRects.some((wall) => intersectsRect(racer, wall)) ||
+    (course.breakWalls ?? []).some((wall) => !wall.broken && intersectsRect(racer, wall))
+  );
 }
 
 function collideMovingWall(course, racer, rect) {
@@ -1431,9 +1521,17 @@ function collideMovingWall(course, racer, rect) {
     racer.y = rect.y - racer.size;
     racer.vy = -Math.abs(racer.vy);
     triggerSquish(racer, "y", 1.4);
-  } else {
+  } else if (course.movingWallDirection === "down") {
+    racer.y = rect.y + rect.height;
+    racer.vy = Math.abs(racer.vy);
+    triggerSquish(racer, "y", 1.4);
+  } else if (course.movingWallDirection === "right") {
     racer.x = rect.x + rect.width;
     racer.vx = Math.abs(racer.vx);
+    triggerSquish(racer, "x", 1.4);
+  } else if (course.movingWallDirection === "left") {
+    racer.x = rect.x - racer.size;
+    racer.vx = -Math.abs(racer.vx);
     triggerSquish(racer, "x", 1.4);
   }
 
@@ -1756,14 +1854,10 @@ function drawBreakWalls(rects) {
 }
 
 function drawMovingWalls(rects, timestamp) {
-  rects.forEach((wall, wallIndex) => {
+  rects.forEach((wall) => {
     const movingState = getMovingFillRects(state.course, wall, state.elapsed);
     movingState.fillRects.forEach((rect) => {
-      context.fillStyle = wallIndex % 2 === 0 ? "rgba(74, 102, 210, 0.30)" : "rgba(44, 170, 208, 0.24)";
-      context.fillRect(rect.x, rect.y, rect.width, rect.height);
-    });
-    movingState.leadingRects.forEach((rect) => {
-      context.fillStyle = wallIndex % 2 === 0 ? "rgba(40, 71, 182, 0.82)" : "rgba(30, 135, 178, 0.72)";
+      context.fillStyle = "rgba(64, 112, 198, 0.72)";
       context.fillRect(rect.x, rect.y, rect.width, rect.height);
     });
   });
@@ -1830,40 +1924,27 @@ function drawRacers() {
 
     context.save();
     context.translate(racer.x + racer.size * 0.5, racer.y + racer.size * 0.5);
-    context.rotate(Math.atan2(racer.vy, racer.vx));
     context.scale(racer.squishX, racer.squishY);
-    context.shadowColor = racer.eliminated ? "rgba(20,20,20,0.35)" : `${racer.color}99`;
-    context.shadowBlur = 14;
     context.fillStyle = racer.eliminated ? "#6f655f" : racer.color;
-    context.fillRect(-racer.size * 0.5, -racer.size * 0.5, racer.size, racer.size);
-    context.shadowBlur = 0;
-    context.strokeStyle = "#fff8ef";
-    context.lineWidth = 2;
-    context.strokeRect(-racer.size * 0.5, -racer.size * 0.5, racer.size, racer.size);
+    context.beginPath();
+    context.arc(0, 0, racer.size * 0.5, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "rgba(255,255,255,0.28)";
+    context.beginPath();
+    context.arc(-racer.size * 0.14, -racer.size * 0.18, racer.size * 0.18, 0, Math.PI * 2);
+    context.fill();
     context.fillStyle = "#fff8ef";
     context.beginPath();
-    context.arc(-racer.size * 0.16, -racer.size * 0.1, racer.size * 0.14, 0, Math.PI * 2);
-    context.arc(racer.size * 0.16, -racer.size * 0.1, racer.size * 0.14, 0, Math.PI * 2);
+    context.arc(-racer.size * 0.13, -racer.size * 0.06, racer.size * 0.12, 0, Math.PI * 2);
+    context.arc(racer.size * 0.13, -racer.size * 0.06, racer.size * 0.12, 0, Math.PI * 2);
     context.fill();
 
-    const eyeLookX = clamp(racer.vx / racer.speed, -1, 1) * racer.size * 0.04;
-    const eyeLookY = clamp(racer.vy / racer.speed, -1, 1) * racer.size * 0.04;
+    const eyeLookX = clamp(racer.vx / racer.speed, -1, 1) * racer.size * 0.025;
+    const eyeLookY = clamp(racer.vy / racer.speed, -1, 1) * racer.size * 0.025;
     context.fillStyle = "#171717";
     context.beginPath();
-    context.arc(-racer.size * 0.16 + eyeLookX, -racer.size * 0.1 + eyeLookY, racer.size * 0.06, 0, Math.PI * 2);
-    context.arc(racer.size * 0.16 + eyeLookX, -racer.size * 0.1 + eyeLookY, racer.size * 0.06, 0, Math.PI * 2);
-    context.fill();
-
-    context.strokeStyle = "#171717";
-    context.lineWidth = 1.5;
-    context.beginPath();
-    context.arc(0, racer.size * 0.08, racer.size * 0.16, 0.18 * Math.PI, 0.82 * Math.PI);
-    context.stroke();
-
-    context.fillStyle = "rgba(255, 238, 240, 0.85)";
-    context.beginPath();
-    context.arc(-racer.size * 0.22, racer.size * 0.1, racer.size * 0.08, 0, Math.PI * 2);
-    context.arc(racer.size * 0.22, racer.size * 0.1, racer.size * 0.08, 0, Math.PI * 2);
+    context.arc(-racer.size * 0.13 + eyeLookX, -racer.size * 0.06 + eyeLookY, racer.size * 0.045, 0, Math.PI * 2);
+    context.arc(racer.size * 0.13 + eyeLookX, -racer.size * 0.06 + eyeLookY, racer.size * 0.045, 0, Math.PI * 2);
     context.fill();
     context.restore();
 
@@ -2098,8 +2179,7 @@ function applyLoadedCourse(payload) {
   updateBranchRateLabel();
   breakWallCountInput.value = String(payload.breakWallCount ?? breakWallCountInput.value);
   updateBreakWallLabel();
-  movingWallCountInput.value = String(payload.movingWallCount ?? movingWallCountInput.value);
-  updateMovingWallLabel();
+  movingWallDirectionInput.value = String(payload.movingWallDirection ?? movingWallDirectionInput.value);
 
   state.course = {
     title: "SHIKAKU RACE",
@@ -2113,7 +2193,7 @@ function applyLoadedCourse(payload) {
     widthVariance: Number(payload.widthVariance ?? widthVarianceInput.value),
     branchRate: Number(payload.branchRate ?? branchRateInput.value),
     breakWallCount: Number(payload.breakWallCount ?? breakWallCountInput.value),
-    movingWallCount: Number(payload.movingWallCount ?? movingWallCountInput.value),
+    movingWallCount: Number(payload.movingWallCount ?? (payload.movingWallDirection && payload.movingWallDirection !== "none" ? 1 : 0)),
     branchCount: Number(payload.branchCount ?? 0),
     widthMode: payload.widthMode ?? getWidthMode(Number(payload.widthVariance ?? widthVarianceInput.value)),
     movingWallDirection: payload.movingWallDirection ?? "right",
@@ -2153,7 +2233,6 @@ recordFormat.textContent = getRecordingProfile()?.label ?? "未対応";
 updateWidthVarianceLabel();
 updateBranchRateLabel();
 updateBreakWallLabel();
-updateMovingWallLabel();
 setCanvasPreset(outputPresetSelect.value);
 generateCourse(seedInput.value);
 
@@ -2182,8 +2261,8 @@ breakWallCountInput.addEventListener("input", () => {
   updateBreakWallLabel();
 });
 
-movingWallCountInput.addEventListener("input", () => {
-  updateMovingWallLabel();
+movingWallDirectionInput.addEventListener("change", () => {
+  generateCourse(seedInput.value);
 });
 
 outputPresetSelect.addEventListener("change", () => {

@@ -102,9 +102,14 @@
               <strong id="breakWallCountValue">4</strong>
             </label>
             <label class="field">
-              <span>動く壁</span>
-              <input id="movingWallCount" type="range" min="0" max="3" step="1" value="1" />
-              <strong id="movingWallCountValue">1</strong>
+              <span>動く壁の方向</span>
+              <select id="movingWallDirection">
+                <option value="none">なし</option>
+                <option value="up" selected>下から</option>
+                <option value="down">上から</option>
+                <option value="right">左から</option>
+                <option value="left">右から</option>
+              </select>
             </label>
             <label class="field">
               <span>Seed</span>
@@ -136,7 +141,7 @@
             </p>
             <p class="panel-note">
               分岐率は主経路から別ルートがどれだけ生えるかを制御します。壊れる壁は 1 回ぶつかると消え、
-              動く壁はスタート側から背景色がゆっくり染まるように進み、逃げ場がなくなると脱落扱いになります。
+              動く壁は指定方向からゆっくり押し進む壁として機能し、通常の壁との間に挟まれると脱落扱いになります。
             </p>
           </div>
 
