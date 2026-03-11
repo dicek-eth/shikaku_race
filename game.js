@@ -1973,10 +1973,6 @@ function drawRacers() {
     context.fill();
     context.restore();
 
-    context.fillStyle = "#fff8ef";
-    context.font = 'bold 10px "Space Grotesk"';
-    context.fillText(racer.label, racer.x - 2, racer.y - 8);
-
     if (racer.eliminated) {
       context.strokeStyle = "#171717";
       context.lineWidth = 2;
@@ -2054,28 +2050,52 @@ function drawWinnerBanner(timestamp) {
     return;
   }
 
-  const width = Math.min(canvas.width - 80, 420);
-  const height = 120;
+  const width = Math.min(canvas.width - 96, 520);
+  const height = 210;
   const x = (canvas.width - width) * 0.5;
   const y = canvas.height * 0.5 - height * 0.5;
 
-  context.shadowColor = `${state.winningRacer.color}77`;
-  context.shadowBlur = 30;
-  drawRoundedRect(x, y, width, height, 24, "rgba(255,250,243,0.96)");
+  context.shadowColor = `${state.winningRacer.color}88`;
+  context.shadowBlur = 42;
+  drawRoundedRect(x, y, width, height, 30, "rgba(255,250,243,0.98)");
   context.shadowColor = "transparent";
 
-  context.strokeStyle = state.winningRacer.color;
-  context.lineWidth = 4;
-  context.strokeRect(x + 6, y + 6, width - 12, height - 12);
+  const grad = context.createLinearGradient(x, y, x + width, y + height);
+  grad.addColorStop(0, state.winningRacer.color);
+  grad.addColorStop(1, "#171717");
+  context.fillStyle = grad;
+  drawRoundedRect(x + 10, y + 10, width - 20, height - 20, 24, grad);
 
-  context.fillStyle = state.winningRacer.color;
-  context.font = 'bold 18px "Space Grotesk"';
-  context.fillText("WINNER", x + 24, y + 34);
+  context.fillStyle = "rgba(255,250,243,0.92)";
+  drawRoundedRect(x + 22, y + 56, width - 44, height - 78, 20, "rgba(255,250,243,0.92)");
+
+  const crownX = canvas.width * 0.5;
+  const crownY = y + 26;
+  context.fillStyle = "#ffd166";
+  context.beginPath();
+  context.moveTo(crownX - 42, crownY + 18);
+  context.lineTo(crownX - 28, crownY - 12);
+  context.lineTo(crownX - 8, crownY + 6);
+  context.lineTo(crownX, crownY - 18);
+  context.lineTo(crownX + 8, crownY + 6);
+  context.lineTo(crownX + 28, crownY - 12);
+  context.lineTo(crownX + 42, crownY + 18);
+  context.lineTo(crownX + 42, crownY + 30);
+  context.lineTo(crownX - 42, crownY + 30);
+  context.closePath();
+  context.fill();
+
   context.fillStyle = "#171717";
-  context.font = 'bold 34px "Space Grotesk"';
-  context.fillText(`${state.winningRacer.label} WIN`, x + 24, y + 76);
-  context.font = '14px "IBM Plex Sans JP"';
-  context.fillText(`finish ${formatTime(state.winningRacer.finishTime)}`, x + 24, y + 102);
+  context.font = '700 18px "Space Grotesk"';
+  context.textAlign = "center";
+  context.fillText("KING OF THE RACE", canvas.width * 0.5, y + 92);
+  context.fillStyle = state.winningRacer.color;
+  context.font = '700 52px "Space Grotesk"';
+  context.fillText(state.winningRacer.label, canvas.width * 0.5, y + 142);
+  context.fillStyle = "#171717";
+  context.font = '700 22px "IBM Plex Sans JP"';
+  context.fillText(`WIN / ${formatTime(state.winningRacer.finishTime)}`, canvas.width * 0.5, y + 178);
+  context.textAlign = "start";
 }
 
 function draw(timestamp = performance.now()) {
