@@ -148,6 +148,8 @@ const audioState = {
   context: null,
   masterGain: null,
   mediaDestination: null,
+  silentGain: null,
+  silenceSource: null,
   ready: false
 };
 
@@ -280,8 +282,15 @@ function ensureAudioReady() {
     audioState.masterGain = audioState.context.createGain();
     audioState.masterGain.gain.value = 0.12;
     audioState.mediaDestination = audioState.context.createMediaStreamDestination();
+    audioState.silentGain = audioState.context.createGain();
+    audioState.silentGain.gain.value = 0;
+    audioState.silenceSource = audioState.context.createConstantSource();
+    audioState.silenceSource.offset.value = 0;
     audioState.masterGain.connect(audioState.context.destination);
     audioState.masterGain.connect(audioState.mediaDestination);
+    audioState.silenceSource.connect(audioState.silentGain);
+    audioState.silentGain.connect(audioState.mediaDestination);
+    audioState.silenceSource.start();
   }
 
   audioState.context.resume();
