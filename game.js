@@ -63,6 +63,7 @@ const OUTPUT_PRESETS = [
 ];
 
 const COURSE_STYLES = [
+  { id: "switchback", label: "Switchback Run" },
   { id: "variety", label: "Variety Mix" },
   { id: "snake", label: "Snake Channel" },
   { id: "ladder", label: "Ladder Drop" },
@@ -514,6 +515,68 @@ function carvePolyline(grid, points, width) {
   });
 }
 
+function buildBottomStartZones(count, laneLeft, laneRight, laneTop, laneWidth) {
+  const usableWidth = laneRight - laneLeft + 1;
+  const gap = usableWidth >= count * 2 ? 1 : 0;
+  const totalWidth = count + (count - 1) * gap;
+  const startLeft = laneLeft + Math.max(0, Math.floor((usableWidth - totalWidth) * 0.5));
+  const row = laneTop + Math.floor(laneWidth * 0.5);
+
+  return Array.from({ length: count }, (_, index) => ({
+    x: startLeft + index * (1 + gap),
+    y: row,
+    width: 1,
+    height: 1
+  }));
+}
+
+function buildSwitchbackPath(startX, laneCenters, goalX) {
+  const path = [{ x: startX, y: laneCenters[laneCenters.length - 1] }];
+  let current = { ...path[0] };
+  let moveRight = true;
+
+  for (let laneIndex = laneCenters.length - 1; laneIndex >= 0; laneIndex -= 1) {
+    const laneY = laneCenters[laneIndex];
+    const targetX =
+      laneIndex === 0
+        ? goalX
+        : moveRight
+          ? GRID_COLS - INNER_MARGIN - 2
+          : INNER_MARGIN + 1;
+
+    while (current.x !== targetX) {
+      current = { x: current.x + Math.sign(targetX - current.x), y: laneY };
+      pushPoint(path, current);
+    }
+
+    if (laneIndex > 0) {
+      const nextY = laneCenters[laneIndex - 1];
+      while (current.y !== nextY) {
+        current = { x: current.x, y: current.y + Math.sign(nextY - current.y) };
+        pushPoint(path, current);
+      }
+    }
+
+    moveRight = !moveRight;
+  }
+
+  return path;
+}
+
+function buildOrderedCells(path) {
+  const cells = [];
+  const seen = new Set();
+  path.forEach((point) => {
+    const key = `${point.x},${point.y}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    cells.push({ x: point.x, y: point.y });
+  });
+  return cells;
+}
+
 function buildBranches(grid, path, branchRate, widthMode, randomFn) {
   const branches = [];
   const branchCount = clamp(Math.round((branchRate / 100) * 4), 0, 4);
@@ -560,44 +623,149 @@ function buildBranches(grid, path, branchRate, widthMode, randomFn) {
 function buildBreakWalls(path, widths, count, cellSize, offsetX, offsetY) {
   const candidates = path
     .map((point, index) => ({ point, index, width: widths[index] }))
-    .filter(({ point, width, index }) => width === 1 && index > Math.floor(path.length * 0.55) && point.x < GRID_COLS - 3);
+    .filter(({ point, width, index }) => width >= 1 && index > Math.floor(path.length * 0.28) && index < Math.floor(path.length * 0.88));
 
   const walls = [];
   for (let index = 0; index < Math.min(count, candidates.length); index += 1) {
     const candidate = candidates[Math.floor(((index + 1) * candidates.length) / (Math.min(count, candidates.length) + 1))];
+    const topCell = clamp(candidate.point.y - Math.floor((candidate.width - 1) * 0.5), 0, GRID_ROWS - candidate.width);
     walls.push({
       cellX: candidate.point.x,
       cellY: candidate.point.y,
       x: offsetX + candidate.point.x * cellSize,
-      y: offsetY + candidate.point.y * cellSize,
+      y: offsetY + topCell * cellSize,
       width: cellSize,
-      height: cellSize,
+      height: cellSize * candidate.width,
       broken: false
     });
   }
   return walls;
 }
 
-function buildMovingWalls(path, widths, count, cellSize, offsetX, offsetY, randomFn) {
-  const candidates = path
-    .map((point, index) => ({ point, index, width: widths[index] }))
-    .filter(({ index, width }) => width >= 2 && index > 3 && index < path.length - 3);
+function buildMovingWalls(pathCells, count, randomFn) {
+  return Array.from({ length: count }, (_, index) => ({
+    speed: 2.2 + randomFn() * 0.7 + index * 0.25,
+    delay: index * 2.4
+  }));
+}
 
-  const walls = [];
-  for (let index = 0; index < Math.min(count, candidates.length); index += 1) {
-    const candidate = candidates[Math.floor(((index + 1) * candidates.length) / (Math.min(count, candidates.length) + 1))];
-    walls.push({
-      baseX: offsetX + candidate.point.x * cellSize,
-      baseY: offsetY + candidate.point.y * cellSize,
-      width: cellSize,
-      height: cellSize,
-      axis: randomFn() > 0.5 ? "x" : "y",
-      amplitude: cellSize * 0.65,
-      speed: 1.2 + randomFn() * 1.2,
-      phase: randomFn() * Math.PI * 2
-    });
+function buildSwitchbackCourseCandidate(seedValue, attempt, targetLength, widthVariance, branchRate, breakWallCount, movingWallCount, racerCount) {
+  const play = getPlayfield();
+  const seed = Number(seedValue) || 1;
+  const randomFn = mulberry32(seededAttempt(seed, attempt));
+  const widthMode = getWidthMode(widthVariance);
+  const laneWidth = clamp(widthMode.max, 2, 3);
+  const laneCount = 4;
+  const laneGap = 2;
+  const topOffset = Math.max(INNER_MARGIN, Math.floor((GRID_ROWS - (laneCount * laneWidth + (laneCount - 1) * laneGap)) * 0.5));
+  const laneTops = Array.from({ length: laneCount }, (_, index) => topOffset + index * (laneWidth + laneGap));
+  const laneCenters = laneTops.map((top) => top + Math.floor(laneWidth * 0.5));
+  const laneLeft = INNER_MARGIN + 1;
+  const laneRight = GRID_COLS - INNER_MARGIN - 2;
+  const goalLeft = INNER_MARGIN;
+  const goalTop = laneTops[0];
+  const startZones = buildBottomStartZones(racerCount, laneLeft, laneRight, laneTops[laneCount - 1], laneWidth);
+  const startX = startZones[0].x;
+  const grid = createMatrix(GRID_ROWS, GRID_COLS, false);
+
+  laneTops.forEach((top) => {
+    carveRect(grid, laneLeft, top, laneRight - laneLeft + 1, laneWidth);
+  });
+
+  startZones.forEach((zone) => {
+    carveRect(grid, zone.x, zone.y, 1, 1);
+  });
+
+  carveRect(grid, goalLeft, goalTop, FINISH_SIZE, FINISH_SIZE);
+
+  const path = buildSwitchbackPath(startX, laneCenters, goalLeft + 1);
+  const widths = path.map(() => laneWidth);
+  carvePolyline(grid, path, laneWidth);
+  const branches = buildBranches(grid, path, branchRate, widthMode, randomFn);
+
+  const cellSize = Math.floor(Math.min(play.width / GRID_COLS, play.height / GRID_ROWS));
+  const offsetX = Math.floor(play.left + (play.width - cellSize * GRID_COLS) * 0.5);
+  const offsetY = Math.floor(play.top + (play.height - cellSize * GRID_ROWS) * 0.5);
+  const pathRects = [];
+  const wallRects = [];
+
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLS; col += 1) {
+      const rect = {
+        x: offsetX + col * cellSize,
+        y: offsetY + row * cellSize,
+        width: cellSize,
+        height: cellSize
+      };
+      if (grid[row][col]) {
+        pathRects.push(rect);
+      } else {
+        wallRects.push(rect);
+      }
+    }
   }
-  return walls;
+
+  const startZoneRects = startZones.map((zone) => ({
+    x: offsetX + zone.x * cellSize,
+    y: offsetY + zone.y * cellSize,
+    width: cellSize,
+    height: cellSize
+  }));
+
+  const mainPathCells = buildOrderedCells(path);
+  const pathIndexMap = Object.fromEntries(mainPathCells.map((cell, index) => [`${cell.x},${cell.y}`, index]));
+  const pathWidthMap = Object.fromEntries(path.map((point, index) => [`${point.x},${point.y}`, widths[index]]));
+  const shortestPathLength = measureShortestPath(grid, startZones, {
+    x: goalLeft,
+    y: goalTop,
+    width: FINISH_SIZE,
+    height: FINISH_SIZE
+  });
+  const breakWalls = buildBreakWalls(path, widths, breakWallCount, cellSize, offsetX, offsetY);
+  const movingWalls = buildMovingWalls(mainPathCells, movingWallCount, randomFn);
+
+  return {
+    title: "SHIKAKU RACE",
+    requestedStyle: "switchback",
+    resolvedStyle: "switchback",
+    seed,
+    gridCols: GRID_COLS,
+    gridRows: GRID_ROWS,
+    targetLength,
+    actualLength: shortestPathLength,
+    widthVariance,
+    branchRate,
+    breakWallCount,
+    movingWallCount,
+    branchCount: branches.length,
+    widthMode,
+    racerSpeed: clamp(cellSize * 4.5, 90, 170),
+    cellSize,
+    passableGrid: grid,
+    playfield: {
+      left: offsetX,
+      top: offsetY,
+      right: offsetX + cellSize * GRID_COLS,
+      bottom: offsetY + cellSize * GRID_ROWS,
+      width: cellSize * GRID_COLS,
+      height: cellSize * GRID_ROWS
+    },
+    startZones: startZoneRects,
+    startRect: startZoneRects[0],
+    finishRect: {
+      x: offsetX + goalLeft * cellSize,
+      y: offsetY + goalTop * cellSize,
+      width: FINISH_SIZE * cellSize,
+      height: FINISH_SIZE * cellSize
+    },
+    pathRects,
+    wallRects,
+    breakWalls,
+    movingWalls,
+    mainPathCells,
+    pathIndexMap,
+    pathWidthMap
+  };
 }
 
 function pushPoint(path, point) {
@@ -728,6 +896,19 @@ function buildWidths(profile, path, varianceRate, randomFn) {
 }
 
 function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVariance, branchRate, breakWallCount, movingWallCount, racerCount) {
+  if (styleId === "switchback") {
+    return buildSwitchbackCourseCandidate(
+      seedValue,
+      attempt,
+      targetLength,
+      widthVariance,
+      branchRate,
+      breakWallCount,
+      movingWallCount,
+      racerCount
+    );
+  }
+
   const play = getPlayfield();
   const seed = Number(seedValue) || 1;
   const randomFn = mulberry32(seededAttempt(seed, attempt));
@@ -800,6 +981,9 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
     width: zone.width * cellSize,
     height: zone.height * cellSize
   }));
+  const mainPathCells = buildOrderedCells(path);
+  const pathIndexMap = Object.fromEntries(mainPathCells.map((cell, index) => [`${cell.x},${cell.y}`, index]));
+  const pathWidthMap = Object.fromEntries(path.map((point, index) => [`${point.x},${point.y}`, widths[index]]));
   const shortestPathLength = measureShortestPath(grid, startZones, {
     x: goalLeft,
     y: goalTop,
@@ -807,7 +991,7 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
     height: FINISH_SIZE
   });
   const breakWalls = buildBreakWalls(path, widths, breakWallCount, cellSize, offsetX, offsetY);
-  const movingWalls = buildMovingWalls(path, widths, movingWallCount, cellSize, offsetX, offsetY, randomFn);
+  const movingWalls = buildMovingWalls(mainPathCells, movingWallCount, randomFn);
 
   return {
     title: "SHIKAKU RACE",
@@ -846,7 +1030,10 @@ function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVa
     pathRects,
     wallRects,
     breakWalls,
-    movingWalls
+    movingWalls,
+    mainPathCells,
+    pathIndexMap,
+    pathWidthMap
   };
 }
 
@@ -923,7 +1110,9 @@ function syncCourseJson() {
       pathRects: state.course.pathRects,
       wallRects: state.course.wallRects,
       breakWalls: state.course.breakWalls,
-      movingWalls: state.course.movingWalls
+      movingWalls: state.course.movingWalls,
+      mainPathCells: state.course.mainPathCells,
+      pathWidthMap: state.course.pathWidthMap
     },
     null,
     2
@@ -1137,14 +1326,50 @@ function triggerSquish(racer, axis, intensity = 1) {
   }
 }
 
-function getMovingWallRect(wall, timestamp) {
-  const wave = Math.sin(timestamp * 0.001 * wall.speed + wall.phase) * wall.amplitude;
-  return {
-    x: wall.axis === "x" ? wall.baseX + wave : wall.baseX,
-    y: wall.axis === "y" ? wall.baseY + wave : wall.baseY,
-    width: wall.width,
-    height: wall.height
-  };
+function getFloodProgress(wall, elapsed) {
+  return Math.max(0, Math.floor((elapsed - wall.delay) * wall.speed));
+}
+
+function isCellFlooded(course, col, row) {
+  const key = `${col},${row}`;
+  const index = course.pathIndexMap?.[key];
+  if (index === undefined) {
+    return false;
+  }
+  return (course.movingWalls ?? []).some((wall) => getFloodProgress(wall, state.elapsed) >= index);
+}
+
+function isRacerTrappedByFlood(course, racer) {
+  const col = Math.floor((racer.x + racer.size * 0.5 - course.playfield.left) / course.cellSize);
+  const row = Math.floor((racer.y + racer.size * 0.5 - course.playfield.top) / course.cellSize);
+  if (!isCellFlooded(course, col, row)) {
+    return false;
+  }
+
+  const directions = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1]
+  ];
+
+  for (const [dx, dy] of directions) {
+    const nextCol = col + dx;
+    const nextRow = row + dy;
+    if (
+      nextCol < 0 ||
+      nextCol >= course.gridCols ||
+      nextRow < 0 ||
+      nextRow >= course.gridRows
+    ) {
+      continue;
+    }
+    if (course.passableGrid[nextRow]?.[nextCol] && !isCellFlooded(course, nextCol, nextRow)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function collideBreakWall(racer, wall, axis) {
@@ -1298,7 +1523,6 @@ function handleRacerCollisions() {
 function updateRace(deltaSeconds) {
   const dt = deltaSeconds * Number(simSpeedInput.value);
   const play = state.course.playfield;
-  const now = performance.now();
   state.elapsed += dt;
   raceTimer.textContent = formatTime(state.elapsed);
   let winner = null;
@@ -1327,11 +1551,8 @@ function updateRace(deltaSeconds) {
       bounceOnAxis(racer, wall, "y");
     }
 
-    for (const wall of state.course.movingWalls ?? []) {
-      if (intersectsRect(racer, getMovingWallRect(wall, now))) {
-        eliminateRacer(racer, "moving-wall");
-        break;
-      }
+    if (isRacerTrappedByFlood(state.course, racer)) {
+      eliminateRacer(racer, "moving-wall");
     }
     if (racer.eliminated) {
       continue;
@@ -1451,13 +1672,17 @@ function drawBreakWalls(rects) {
 }
 
 function drawMovingWalls(rects, timestamp) {
-  rects.forEach((wall) => {
-    const rect = getMovingWallRect(wall, timestamp);
-    context.fillStyle = "rgba(37, 48, 92, 0.95)";
-    context.fillRect(rect.x, rect.y, rect.width, rect.height);
-    context.strokeStyle = "#d8f1ff";
-    context.lineWidth = 2;
-    context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+  rects.forEach((wall, wallIndex) => {
+    const progress = getFloodProgress(wall, state.elapsed);
+    const count = Math.min(progress, state.course.mainPathCells?.length ?? 0);
+    for (let index = 0; index < count; index += 1) {
+      const cell = state.course.mainPathCells[index];
+      const width = state.course.pathWidthMap?.[`${cell.x},${cell.y}`] ?? 1;
+      const x = state.course.playfield.left + cell.x * state.course.cellSize;
+      const y = state.course.playfield.top + (cell.y - Math.floor((width - 1) * 0.5)) * state.course.cellSize;
+      context.fillStyle = wallIndex % 2 === 0 ? "rgba(74, 102, 210, 0.42)" : "rgba(44, 170, 208, 0.34)";
+      context.fillRect(x, y, state.course.cellSize, state.course.cellSize * width);
+    }
   });
 }
 
@@ -1818,7 +2043,10 @@ function applyLoadedCourse(payload) {
     pathRects: payload.pathRects ?? [],
     wallRects: payload.wallRects ?? [],
     breakWalls: payload.breakWalls ?? [],
-    movingWalls: payload.movingWalls ?? []
+    movingWalls: payload.movingWalls ?? [],
+    mainPathCells: payload.mainPathCells ?? [],
+    pathIndexMap: Object.fromEntries((payload.mainPathCells ?? []).map((cell, index) => [`${cell.x},${cell.y}`, index])),
+    pathWidthMap: payload.pathWidthMap ?? {}
   };
 
   seedInput.value = String(state.course.seed);
@@ -1836,7 +2064,7 @@ function exportCourseJson() {
 
 fillSelectOptions();
 outputPresetSelect.value = OUTPUT_PRESETS[0].id;
-courseStyleSelect.value = "variety";
+courseStyleSelect.value = "switchback";
 recordFormat.textContent = getRecordingProfile()?.label ?? "未対応";
 updateWidthVarianceLabel();
 updateBranchRateLabel();
