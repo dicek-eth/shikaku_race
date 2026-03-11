@@ -82,14 +82,14 @@
               <select id="courseStyle"></select>
             </label>
             <label class="field">
-              <span>道の長さ</span>
-              <input id="pathLength" type="range" min="20" max="120" step="2" value="56" />
-              <strong id="pathLengthValue">56</strong>
+              <span>最短ルート長</span>
+              <input id="pathLength" type="range" min="18" max="96" step="2" value="48" />
+              <strong id="pathLengthValue">48</strong>
             </label>
             <label class="field">
-              <span>幅の変化率</span>
+              <span>道幅モード</span>
               <input id="widthVariance" type="range" min="0" max="100" step="5" value="35" />
-              <strong id="widthVarianceValue">35%</strong>
+              <strong id="widthVarianceValue">1-2マス</strong>
             </label>
             <label class="field">
               <span>Seed</span>
@@ -112,8 +112,12 @@
               の白黒チェッカーで表示します。
             </p>
             <p class="panel-note">
-              道は `1` マスまたは `2` マス幅だけで構成します。道の長さでルート全体の回り道量を、
-              幅の変化率で `1` マス道と `2` マス道の切り替わりやすさを決めます。
+              道の長さは、壁を考慮したスタートからゴールまでの最短到達距離です。生成器は、
+              その距離が指定値より短くならないコースだけを採用します。
+            </p>
+            <p class="panel-note">
+              道幅モードは `1`, `1-2`, `1-3` マス帯を切り替えます。狭い道が増えるほど、
+              レーサーがぶつかりやすく、難易度が上がります。
             </p>
           </div>
 

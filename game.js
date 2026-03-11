@@ -73,7 +73,7 @@ const STYLE_PROFILES = {
     swingMax: 5,
     widthMin: 1,
     widthBase: 1,
-    widthMax: 2,
+    widthMax: 3,
     verticalBias: 0.88,
     alternating: true
   },
@@ -83,7 +83,7 @@ const STYLE_PROFILES = {
     swingMax: 6,
     widthMin: 1,
     widthBase: 1,
-    widthMax: 2,
+    widthMax: 3,
     verticalBias: 0.94,
     alternating: true
   },
@@ -93,7 +93,7 @@ const STYLE_PROFILES = {
     swingMax: 4,
     widthMin: 1,
     widthBase: 2,
-    widthMax: 2,
+    widthMax: 3,
     verticalBias: 0.72,
     alternating: false
   },
@@ -103,7 +103,7 @@ const STYLE_PROFILES = {
     swingMax: 4,
     widthMin: 1,
     widthBase: 1,
-    widthMax: 2,
+    widthMax: 3,
     verticalBias: 0.9,
     alternating: true
   }
@@ -184,6 +184,10 @@ function randomInt(randomFn, min, max) {
 
 function randomSeed() {
   return Math.floor(Math.random() * 999999);
+}
+
+function seededAttempt(seed, attempt) {
+  return seed + attempt * 9973;
 }
 
 function formatTime(seconds) {
@@ -405,6 +409,84 @@ function getZoneCenterRow(zone) {
   return zone.y + Math.floor(zone.height / 2);
 }
 
+function getWidthMode(varianceRate) {
+  if (varianceRate < 34) {
+    return { min: 1, max: 1, label: "1マス" };
+  }
+  if (varianceRate < 67) {
+    return { min: 1, max: 2, label: "1-2マス" };
+  }
+  return { min: 1, max: 3, label: "1-3マス" };
+}
+
+function updateWidthVarianceLabel() {
+  widthVarianceValue.textContent = getWidthMode(Number(widthVarianceInput.value)).label;
+}
+
+function getRectCells(rect) {
+  const cells = [];
+  for (let row = rect.y; row < rect.y + rect.height; row += 1) {
+    for (let col = rect.x; col < rect.x + rect.width; col += 1) {
+      cells.push({ x: col, y: row });
+    }
+  }
+  return cells;
+}
+
+function measureShortestPath(grid, startZones, finishZone) {
+  const rows = grid.length;
+  const cols = grid[0]?.length ?? 0;
+  const distances = createMatrix(rows, cols, -1);
+  const queue = [];
+  let head = 0;
+
+  startZones.forEach((zone) => {
+    getRectCells(zone).forEach((cell) => {
+      if (!grid[cell.y]?.[cell.x] || distances[cell.y][cell.x] !== -1) {
+        return;
+      }
+      distances[cell.y][cell.x] = 0;
+      queue.push(cell);
+    });
+  });
+
+  const finishKeys = new Set(getRectCells(finishZone).map((cell) => `${cell.x},${cell.y}`));
+  const directions = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1]
+  ];
+
+  while (head < queue.length) {
+    const current = queue[head];
+    head += 1;
+
+    if (finishKeys.has(`${current.x},${current.y}`)) {
+      return distances[current.y][current.x];
+    }
+
+    for (const [dx, dy] of directions) {
+      const nextX = current.x + dx;
+      const nextY = current.y + dy;
+      if (
+        nextX < 0 ||
+        nextX >= cols ||
+        nextY < 0 ||
+        nextY >= rows ||
+        !grid[nextY][nextX] ||
+        distances[nextY][nextX] !== -1
+      ) {
+        continue;
+      }
+      distances[nextY][nextX] = distances[current.y][current.x] + 1;
+      queue.push({ x: nextX, y: nextY });
+    }
+  }
+
+  return Infinity;
+}
+
 function pushPoint(path, point) {
   const last = path[path.length - 1];
   if (!last || last.x !== point.x || last.y !== point.y) {
@@ -513,14 +595,18 @@ function buildCenterline(profile, startPoint, goalPoint, targetLength, randomFn)
 }
 
 function buildWidths(profile, path, varianceRate, randomFn) {
-  let currentWidth = profile.widthBase;
+  const mode = getWidthMode(varianceRate);
+  let currentWidth = clamp(profile.widthBase, mode.min, Math.min(mode.max, profile.widthMax));
   const widths = [];
-  const changeChance = varianceRate / 100;
+  const changeChance = 0.14 + varianceRate / 140;
 
   for (let index = 0; index < path.length; index += 1) {
-    if (index > 0 && randomFn() < changeChance * 0.55) {
-      const delta = randomFn() > 0.5 ? 1 : -1;
-      currentWidth = clamp(currentWidth + delta, profile.widthMin, profile.widthMax);
+    if (index > 0 && randomFn() < changeChance) {
+      currentWidth = randomInt(
+        randomFn,
+        mode.min,
+        Math.min(mode.max, profile.widthMax)
+      );
     }
     widths.push(currentWidth);
   }
@@ -528,15 +614,13 @@ function buildWidths(profile, path, varianceRate, randomFn) {
   return widths;
 }
 
-function buildCourse(styleId, seedValue) {
+function buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVariance, racerCount) {
   const play = getPlayfield();
   const seed = Number(seedValue) || 1;
-  const randomFn = mulberry32(seed);
+  const randomFn = mulberry32(seededAttempt(seed, attempt));
   const resolvedStyle = chooseStyle(styleId, randomFn);
   const profile = STYLE_PROFILES[resolvedStyle];
-  const targetLength = Number(pathLengthInput.value);
-  const widthVariance = Number(widthVarianceInput.value);
-  const racerCount = Number(racerCountInput.value);
+  const widthMode = getWidthMode(widthVariance);
   const grid = createMatrix(GRID_ROWS, GRID_COLS, false);
   const startZones = buildStartZones(racerCount, randomFn);
   const mergeCol = INNER_MARGIN + START_ZONE_SIZE + 2;
@@ -554,14 +638,15 @@ function buildCourse(styleId, seedValue) {
     carveRect(grid, zone.x, zone.y, zone.width, zone.height);
 
     const zoneCenter = { x: zone.x + zone.width - 1, y: getZoneCenterRow(zone) };
-    const corridorWidth = randomFn() < widthVariance / 100 ? 2 : 1;
+    const corridorWidth = randomInt(randomFn, widthMode.min, widthMode.max);
     carveConnection(grid, zoneCenter, { x: mergeCol, y: zoneCenter.y }, corridorWidth);
     carveConnection(grid, { x: mergeCol, y: zoneCenter.y }, startPoint, corridorWidth);
   });
 
   carveRect(grid, goalLeft, goalTop, FINISH_SIZE, FINISH_SIZE);
 
-  const { path, actualLength: mainPathLength } = buildCenterline(profile, startPoint, goalPoint, targetLength, randomFn);
+  const effectiveTarget = targetLength + attempt * 3;
+  const { path } = buildCenterline(profile, startPoint, goalPoint, effectiveTarget, randomFn);
   const widths = buildWidths(profile, path, widthVariance, randomFn);
 
   path.forEach((point, index) => {
@@ -600,13 +685,12 @@ function buildCourse(styleId, seedValue) {
     width: zone.width * cellSize,
     height: zone.height * cellSize
   }));
-
-  const actualLength =
-    mainPathLength +
-    startZones.reduce(
-      (sum, zone) => sum + Math.abs(mergeCol - (zone.x + zone.width - 1)) + Math.abs(mergeRow - getZoneCenterRow(zone)),
-      0
-    );
+  const shortestPathLength = measureShortestPath(grid, startZones, {
+    x: goalLeft,
+    y: goalTop,
+    width: FINISH_SIZE,
+    height: FINISH_SIZE
+  });
 
   return {
     title: "SHIKAKU RACE",
@@ -616,8 +700,9 @@ function buildCourse(styleId, seedValue) {
     gridCols: GRID_COLS,
     gridRows: GRID_ROWS,
     targetLength,
-    actualLength,
+    actualLength: shortestPathLength,
     widthVariance,
+    widthMode,
     racerSpeed: clamp(cellSize * 4.5, 90, 170),
     cellSize,
     passableGrid: grid,
@@ -640,6 +725,25 @@ function buildCourse(styleId, seedValue) {
     pathRects,
     wallRects
   };
+}
+
+function buildCourse(styleId, seedValue) {
+  const targetLength = Number(pathLengthInput.value);
+  const widthVariance = Number(widthVarianceInput.value);
+  const racerCount = Number(racerCountInput.value);
+  let bestCandidate = null;
+
+  for (let attempt = 0; attempt < 48; attempt += 1) {
+    const candidate = buildCourseCandidate(styleId, seedValue, attempt, targetLength, widthVariance, racerCount);
+    if (Number.isFinite(candidate.actualLength) && (!bestCandidate || candidate.actualLength > bestCandidate.actualLength)) {
+      bestCandidate = candidate;
+    }
+    if (Number.isFinite(candidate.actualLength) && candidate.actualLength >= targetLength) {
+      return candidate;
+    }
+  }
+
+  return bestCandidate ?? buildCourseCandidate(styleId, seedValue, 0, targetLength, widthVariance, racerCount);
 }
 
 function updateCourseMeta() {
@@ -665,6 +769,7 @@ function syncCourseJson() {
       targetLength: state.course.targetLength,
       actualLength: state.course.actualLength,
       widthVariance: state.course.widthVariance,
+      widthMode: state.course.widthMode,
       racerSpeed: state.course.racerSpeed,
       cellSize: state.course.cellSize,
       passableGrid: state.course.passableGrid,
@@ -750,7 +855,9 @@ function createRacers(count) {
       finished: false,
       finishTime: 0,
       trail: [],
-      nextSoundAt: 0
+      nextSoundAt: 0,
+      squishX: 1,
+      squishY: 1
     };
   });
 }
@@ -872,6 +979,17 @@ function reflectVelocity(vx, vy, nx, ny) {
   };
 }
 
+function triggerSquish(racer, axis, intensity = 1) {
+  const amount = clamp(0.12 + intensity * 0.08, 0.12, 0.34);
+  if (axis === "x") {
+    racer.squishX = Math.min(racer.squishX, 1 - amount);
+    racer.squishY = Math.max(racer.squishY, 1 + amount * 0.9);
+  } else {
+    racer.squishY = Math.min(racer.squishY, 1 - amount);
+    racer.squishX = Math.max(racer.squishX, 1 + amount * 0.9);
+  }
+}
+
 function bounceOnAxis(racer, wall, axis) {
   if (!intersectsRect(racer, wall)) {
     return;
@@ -883,11 +1001,13 @@ function bounceOnAxis(racer, wall, axis) {
     const impactSpeed = Math.abs(racer.vx);
     racer.vx *= -restitution;
     playCollisionTone(racer, impactSpeed);
+    triggerSquish(racer, "x", impactSpeed / Math.max(racer.speed, 1));
   } else {
     racer.y = racer.vy > 0 ? wall.y - racer.size : wall.y + wall.height;
     const impactSpeed = Math.abs(racer.vy);
     racer.vy *= -restitution;
     playCollisionTone(racer, impactSpeed);
+    triggerSquish(racer, "y", impactSpeed / Math.max(racer.speed, 1));
   }
 
   normalizeRacerSpeed(racer);
@@ -900,20 +1020,24 @@ function bounceOnBounds(racer, playfield) {
     racer.x = playfield.left;
     racer.vx = Math.abs(racer.vx);
     collided = true;
+    triggerSquish(racer, "x");
   } else if (racer.x + racer.size > playfield.right) {
     racer.x = playfield.right - racer.size;
     racer.vx = -Math.abs(racer.vx);
     collided = true;
+    triggerSquish(racer, "x");
   }
 
   if (racer.y < playfield.top) {
     racer.y = playfield.top;
     racer.vy = Math.abs(racer.vy);
     collided = true;
+    triggerSquish(racer, "y");
   } else if (racer.y + racer.size > playfield.bottom) {
     racer.y = playfield.bottom - racer.size;
     racer.vy = -Math.abs(racer.vy);
     collided = true;
+    triggerSquish(racer, "y");
   }
 
   if (collided) {
@@ -1133,6 +1257,9 @@ function drawTrack() {
 
 function drawRacers() {
   for (const racer of state.racers) {
+    racer.squishX += (1 - racer.squishX) * 0.28;
+    racer.squishY += (1 - racer.squishY) * 0.28;
+
     if (racer.trail.length > 1) {
       for (let index = 0; index < racer.trail.length; index += 1) {
         const point = racer.trail[index];
@@ -1152,6 +1279,7 @@ function drawRacers() {
     context.save();
     context.translate(racer.x + racer.size * 0.5, racer.y + racer.size * 0.5);
     context.rotate(Math.atan2(racer.vy, racer.vx));
+    context.scale(racer.squishX, racer.squishY);
     context.shadowColor = `${racer.color}99`;
     context.shadowBlur = 14;
     context.fillStyle = racer.color;
@@ -1161,14 +1289,31 @@ function drawRacers() {
     context.lineWidth = 2;
     context.strokeRect(-racer.size * 0.5, -racer.size * 0.5, racer.size, racer.size);
     context.fillStyle = "#fff8ef";
-    context.fillRect(racer.size * 0.04, -racer.size * 0.14, racer.size * 0.18, racer.size * 0.28);
-    context.fillStyle = "#171717";
-    context.fillRect(-racer.size * 0.16, -racer.size * 0.16, racer.size * 0.28, racer.size * 0.32);
-    context.restore();
+    context.beginPath();
+    context.arc(-racer.size * 0.16, -racer.size * 0.1, racer.size * 0.14, 0, Math.PI * 2);
+    context.arc(racer.size * 0.16, -racer.size * 0.1, racer.size * 0.14, 0, Math.PI * 2);
+    context.fill();
 
+    const eyeLookX = clamp(racer.vx / racer.speed, -1, 1) * racer.size * 0.04;
+    const eyeLookY = clamp(racer.vy / racer.speed, -1, 1) * racer.size * 0.04;
     context.fillStyle = "#171717";
-    context.font = 'bold 11px "Space Grotesk"';
-    context.fillText(racer.id, racer.x + racer.size * 0.28, racer.y + racer.size * 0.68);
+    context.beginPath();
+    context.arc(-racer.size * 0.16 + eyeLookX, -racer.size * 0.1 + eyeLookY, racer.size * 0.06, 0, Math.PI * 2);
+    context.arc(racer.size * 0.16 + eyeLookX, -racer.size * 0.1 + eyeLookY, racer.size * 0.06, 0, Math.PI * 2);
+    context.fill();
+
+    context.strokeStyle = "#171717";
+    context.lineWidth = 1.5;
+    context.beginPath();
+    context.arc(0, racer.size * 0.08, racer.size * 0.16, 0.18 * Math.PI, 0.82 * Math.PI);
+    context.stroke();
+
+    context.fillStyle = "rgba(255, 238, 240, 0.85)";
+    context.beginPath();
+    context.arc(-racer.size * 0.22, racer.size * 0.1, racer.size * 0.08, 0, Math.PI * 2);
+    context.arc(racer.size * 0.22, racer.size * 0.1, racer.size * 0.08, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
 
     context.fillStyle = "#fff8ef";
     context.font = 'bold 10px "Space Grotesk"';
@@ -1190,11 +1335,11 @@ function drawOverlay() {
   context.font = '14px "IBM Plex Sans JP"';
   context.fillStyle = COLORS.muted;
   context.fillText(
-    `${state.course.resolvedStyle} / seed ${state.course.seed} / target ${state.course.targetLength} / built ${state.course.actualLength}`,
+    `${state.course.resolvedStyle} / seed ${state.course.seed} / route ${state.course.actualLength} / target ${state.course.targetLength}`,
     40,
     74
   );
-  context.fillText(`${state.preset.label} / first goal wins`, 40, 92);
+  context.fillText(`${state.preset.label} / width ${state.course.widthMode.label} / first goal wins`, 40, 92);
 
   context.fillStyle = COLORS.ink;
   context.font = 'bold 22px "Space Grotesk"';
@@ -1381,7 +1526,7 @@ function applyLoadedCourse(payload) {
   pathLengthInput.value = String(payload.targetLength ?? pathLengthInput.value);
   pathLengthValue.textContent = pathLengthInput.value;
   widthVarianceInput.value = String(payload.widthVariance ?? widthVarianceInput.value);
-  widthVarianceValue.textContent = `${widthVarianceInput.value}%`;
+  updateWidthVarianceLabel();
 
   state.course = {
     title: "SHIKAKU RACE",
@@ -1393,6 +1538,7 @@ function applyLoadedCourse(payload) {
     targetLength: Number(payload.targetLength ?? pathLengthInput.value),
     actualLength: Number(payload.actualLength ?? pathLengthInput.value),
     widthVariance: Number(payload.widthVariance ?? widthVarianceInput.value),
+    widthMode: payload.widthMode ?? getWidthMode(Number(payload.widthVariance ?? widthVarianceInput.value)),
     racerSpeed: Number(payload.racerSpeed ?? clamp((payload.cellSize ?? 20) * 4.5, 90, 170)),
     cellSize: payload.cellSize,
     passableGrid: rebuildPassableGrid(payload),
@@ -1421,6 +1567,7 @@ fillSelectOptions();
 outputPresetSelect.value = OUTPUT_PRESETS[0].id;
 courseStyleSelect.value = "variety";
 recordFormat.textContent = getRecordingProfile()?.label ?? "未対応";
+updateWidthVarianceLabel();
 setCanvasPreset(outputPresetSelect.value);
 generateCourse(seedInput.value);
 
@@ -1438,7 +1585,7 @@ pathLengthInput.addEventListener("input", () => {
 });
 
 widthVarianceInput.addEventListener("input", () => {
-  widthVarianceValue.textContent = `${widthVarianceInput.value}%`;
+  updateWidthVarianceLabel();
 });
 
 outputPresetSelect.addEventListener("change", () => {
