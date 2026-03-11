@@ -225,6 +225,9 @@ button.primary {
 .preview-panel {
   display: grid;
   gap: 14px;
+  position: sticky;
+  top: 18px;
+  align-self: start;
 }
 
 .canvas-frame {
@@ -232,11 +235,15 @@ button.primary {
   border-radius: 28px;
   padding: 16px;
   min-height: 70vh;
+  display: grid;
+  place-items: center;
 }
 
 canvas {
   display: block;
-  width: min(100%, 760px);
+  width: auto;
+  height: auto;
+  max-width: 100%;
   max-height: 78vh;
   margin: 0 auto;
   border-radius: 24px;
@@ -275,6 +282,10 @@ canvas {
   .hero,
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .preview-panel {
+    position: static;
   }
 
   .preview-footer {

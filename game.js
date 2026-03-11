@@ -29,6 +29,8 @@ const pauseButton = document.getElementById("pauseButton");
 const resetButton = document.getElementById("resetButton");
 const recordButton = document.getElementById("recordButton");
 const stopRecordButton = document.getElementById("stopRecordButton");
+const soundTypeInput = document.getElementById("soundType");
+const musicModeInput = document.getElementById("musicMode");
 const recordingModeInput = document.getElementById("recordingMode");
 const exportJsonButton = document.getElementById("exportJsonButton");
 const loadJsonButton = document.getElementById("loadJsonButton");
@@ -144,6 +146,48 @@ const RACER_PALETTE = [
   { name: "PINK", color: "#fb5f86", frequency: 392, wave: "square" }
 ];
 
+const SOUND_PRESETS = {
+  classic: {
+    primaryWave: "sine",
+    overtoneWave: "triangle",
+    overtoneRatio: 1.5,
+    attack: 0.004,
+    decay: 0.12,
+    level: 1
+  },
+  glass: {
+    primaryWave: "triangle",
+    overtoneWave: "sine",
+    overtoneRatio: 2.02,
+    attack: 0.002,
+    decay: 0.18,
+    level: 0.8
+  },
+  arcade: {
+    primaryWave: "square",
+    overtoneWave: "square",
+    overtoneRatio: 2,
+    attack: 0.002,
+    decay: 0.1,
+    level: 0.9
+  },
+  rubber: {
+    primaryWave: "sawtooth",
+    overtoneWave: "triangle",
+    overtoneRatio: 1.25,
+    attack: 0.003,
+    decay: 0.14,
+    level: 0.85
+  }
+};
+
+const MUSIC_MODES = {
+  off: null,
+  pentatonic: [0, 2, 4, 7, 9, 7, 4, 2],
+  major: [0, 2, 4, 5, 7, 9, 11, 12],
+  chord: [0, 4, 7, 12, 7, 4]
+};
+
 const audioState = {
   context: null,
   masterGain: null,
@@ -211,8 +255,24 @@ function formatTime(seconds) {
   return `${seconds.toFixed(1)}s`;
 }
 
+function syncCanvasDisplaySize() {
+  const maxHeight = Math.max(320, window.innerHeight * 0.78);
+  const maxWidth = canvas.height > canvas.width ? 460 : 760;
+  const fittedWidth = Math.min(maxWidth, canvas.width, maxHeight * (canvas.width / canvas.height));
+  canvas.style.width = `${Math.max(220, fittedWidth)}px`;
+  canvas.style.height = `${Math.max(220, fittedWidth * (canvas.height / canvas.width))}px`;
+}
+
 function isPerRaceRecording() {
   return recorderState.mode === "per-race";
+}
+
+function getSoundPreset() {
+  return SOUND_PRESETS[soundTypeInput?.value] ?? SOUND_PRESETS.classic;
+}
+
+function getMusicPattern() {
+  return MUSIC_MODES[musicModeInput?.value] ?? null;
 }
 
 function buildRecordingFilename(extension) {
@@ -310,18 +370,28 @@ function playCollisionTone(racer, impactSpeed) {
 
   racer.nextSoundAt = now + 0.08;
 
+  const preset = getSoundPreset();
+  const melody = getMusicPattern();
+  let baseFrequency = racer.frequency;
+  if (melody?.length) {
+    const step = melody[racer.noteStep % melody.length];
+    baseFrequency = racer.frequency * 2 ** (step / 12);
+    racer.noteStep = (racer.noteStep + 1) % melody.length;
+  }
+
   const primary = audioState.context.createOscillator();
   const overtone = audioState.context.createOscillator();
   const gain = audioState.context.createGain();
-  const level = clamp(impactSpeed / 320, 0.05, 0.18);
+  const level = clamp((impactSpeed / 320) * preset.level, 0.05, 0.2);
 
-  primary.type = racer.wave;
-  overtone.type = "sine";
-  primary.frequency.setValueAtTime(racer.frequency, now);
-  overtone.frequency.setValueAtTime(racer.frequency * 1.5, now);
+  primary.type = preset.primaryWave ?? racer.wave;
+  overtone.type = preset.overtoneWave ?? "sine";
+  primary.frequency.setValueAtTime(baseFrequency, now);
+  overtone.frequency.setValueAtTime(baseFrequency * preset.overtoneRatio, now);
 
-  gain.gain.setValueAtTime(level, now);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(level, now + preset.attack);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + preset.decay);
 
   primary.connect(gain);
   overtone.connect(gain);
@@ -329,8 +399,8 @@ function playCollisionTone(racer, impactSpeed) {
 
   primary.start(now);
   overtone.start(now);
-  primary.stop(now + 0.12);
-  overtone.stop(now + 0.12);
+  primary.stop(now + preset.decay);
+  overtone.stop(now + preset.decay);
 }
 
 function fillSelectOptions() {
@@ -354,6 +424,7 @@ function setCanvasPreset(presetId) {
   state.preset = preset;
   canvas.width = preset.width;
   canvas.height = preset.height;
+  syncCanvasDisplaySize();
 }
 
 function getPlayfield() {
@@ -1346,6 +1417,7 @@ function createRacers(count) {
       eliminated: false,
       deathReason: "",
       finishTime: 0,
+      noteStep: index,
       trail: [],
       nextSoundAt: 0,
       squishX: 1,
@@ -1559,7 +1631,106 @@ function getMovingFillRects(course, wall, elapsed) {
   return { fillRects, leadingRects };
 }
 
-function collidesWithStaticBoundsOrWalls(course, racer) {
+function getMovingWallSpan(course, direction) {
+  return direction === "left" || direction === "right" ? course.gridCols : course.gridRows;
+}
+
+function getMovingWallsState(course, elapsed) {
+  const wallStates = (course.movingWalls ?? []).map((wall) => ({
+    wall,
+    ...getMovingFillRects(course, wall, elapsed)
+  }));
+  return {
+    walls: wallStates,
+    fillRects: wallStates.flatMap((item) => item.fillRects),
+    leadingRects: wallStates.flatMap((item) => item.leadingRects),
+    isComplete: wallStates.some((item) => getMovingWallProgress(item.wall, elapsed) >= getMovingWallSpan(course, item.wall.direction))
+  };
+}
+
+function getSolidWallRects(course, movingRects = []) {
+  return [
+    ...course.wallRects,
+    ...(course.breakWalls ?? []).filter((wall) => !wall.broken),
+    ...movingRects
+  ];
+}
+
+function canOccupyPosition(course, racer, x, y, movingRects = []) {
+  const testRacer = { x, y, size: racer.size };
+  if (
+    x < course.playfield.left ||
+    y < course.playfield.top ||
+    x + racer.size > course.playfield.right ||
+    y + racer.size > course.playfield.bottom
+  ) {
+    return false;
+  }
+
+  if (!isRacerOnCourse(course, testRacer)) {
+    return false;
+  }
+
+  return !getSolidWallRects(course, movingRects).some((wall) => intersectsRect(testRacer, wall));
+}
+
+function findNearestSafePlacement(course, racer, movingRects = []) {
+  const candidates = [
+    { x: racer.lastSafeX, y: racer.lastSafeY },
+    { x: racer.x, y: racer.y }
+  ];
+
+  const pathCandidates = [...course.pathRects]
+    .map((rect) => ({
+      x: rect.x + (rect.width - racer.size) * 0.5,
+      y: rect.y + (rect.height - racer.size) * 0.5,
+      distance:
+        (rect.x + rect.width * 0.5 - (racer.x + racer.size * 0.5)) ** 2 +
+        (rect.y + rect.height * 0.5 - (racer.y + racer.size * 0.5)) ** 2
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 80);
+
+  candidates.push(...pathCandidates);
+
+  for (const candidate of candidates) {
+    if (canOccupyPosition(course, racer, candidate.x, candidate.y, movingRects)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function resolveInvalidRacerState(course, racer, movingRects = [], reason = "stuck") {
+  if (canOccupyPosition(course, racer, racer.x, racer.y, movingRects)) {
+    racer.lastSafeX = racer.x;
+    racer.lastSafeY = racer.y;
+    return true;
+  }
+
+  const placement = findNearestSafePlacement(course, racer, movingRects);
+  if (!placement) {
+    eliminateRacer(racer, reason);
+    return false;
+  }
+
+  const shiftX = placement.x - racer.x;
+  const shiftY = placement.y - racer.y;
+  racer.x = placement.x;
+  racer.y = placement.y;
+  if (Math.abs(shiftX) >= Math.abs(shiftY) && shiftX !== 0) {
+    racer.vx = shiftX > 0 ? Math.abs(racer.vx) : -Math.abs(racer.vx);
+  } else if (shiftY !== 0) {
+    racer.vy = shiftY > 0 ? Math.abs(racer.vy) : -Math.abs(racer.vy);
+  }
+  normalizeRacerSpeed(racer);
+  racer.lastSafeX = racer.x;
+  racer.lastSafeY = racer.y;
+  return true;
+}
+
+function collidesWithStaticBoundsOrWalls(course, racer, movingRects = []) {
   if (
     racer.x <= course.playfield.left ||
     racer.y <= course.playfield.top ||
@@ -1569,13 +1740,10 @@ function collidesWithStaticBoundsOrWalls(course, racer) {
     return true;
   }
 
-  return (
-    course.wallRects.some((wall) => intersectsRect(racer, wall)) ||
-    (course.breakWalls ?? []).some((wall) => !wall.broken && intersectsRect(racer, wall))
-  );
+  return getSolidWallRects(course, movingRects).some((wall) => intersectsRect(racer, wall));
 }
 
-function collideMovingWall(course, racer, rect) {
+function collideMovingWall(course, racer, rect, movingRects) {
   if (!intersectsRect(racer, rect)) {
     return false;
   }
@@ -1601,7 +1769,7 @@ function collideMovingWall(course, racer, rect) {
   playCollisionTone(racer, racer.speed * 0.9);
   normalizeRacerSpeed(racer);
 
-  if (collidesWithStaticBoundsOrWalls(course, racer)) {
+  if (!resolveInvalidRacerState(course, racer, movingRects, "moving-wall")) {
     eliminateRacer(racer, "moving-wall");
   }
 
@@ -1762,7 +1930,13 @@ function updateRace(deltaSeconds) {
   state.elapsed += deltaSeconds;
   state.simElapsed += dt;
   raceTimer.textContent = formatTime(state.elapsed);
+  const movingWallsState = getMovingWallsState(state.course, state.simElapsed);
   let winner = null;
+
+  if (movingWallsState.isComplete) {
+    finishRace("MOVING WALL FULL");
+    return;
+  }
 
   for (const racer of state.racers) {
     if (racer.finished || racer.eliminated) {
@@ -1788,14 +1962,8 @@ function updateRace(deltaSeconds) {
       bounceOnAxis(racer, wall, "y");
     }
 
-    for (const wall of state.course.movingWalls ?? []) {
-      const movingState = getMovingFillRects(state.course, wall, state.simElapsed);
-      for (const rect of movingState.leadingRects) {
-        collideMovingWall(state.course, racer, rect);
-        if (racer.eliminated) {
-          break;
-        }
-      }
+    for (const rect of movingWallsState.fillRects) {
+      collideMovingWall(state.course, racer, rect, movingWallsState.fillRects);
       if (racer.eliminated) {
         break;
       }
@@ -1805,12 +1973,8 @@ function updateRace(deltaSeconds) {
     }
 
     bounceOnBounds(racer, play);
-
-    if (!isRacerOnCourse(state.course, racer)) {
-      recoverRacerToCourse(racer);
-    } else {
-      racer.lastSafeX = racer.x;
-      racer.lastSafeY = racer.y;
+    if (!resolveInvalidRacerState(state.course, racer, movingWallsState.fillRects, "wall-stuck")) {
+      continue;
     }
 
     racer.trail.push({ x: racer.x + racer.size * 0.5, y: racer.y + racer.size * 0.5 });
@@ -1842,6 +2006,14 @@ function updateRace(deltaSeconds) {
   }
 
   handleRacerCollisions();
+  for (const racer of state.racers) {
+    if (!racer.finished && !racer.eliminated) {
+      resolveInvalidRacerState(state.course, racer, movingWallsState.fillRects, "wall-stuck");
+    }
+  }
+  if (!state.racers.some((racer) => !racer.finished && !racer.eliminated)) {
+    finishRace("全員脱落");
+  }
 }
 
 function drawBackground() {
@@ -1918,12 +2090,10 @@ function drawBreakWalls(rects) {
 }
 
 function drawMovingWalls(rects, timestamp) {
-  rects.forEach((wall) => {
-    const movingState = getMovingFillRects(state.course, wall, state.simElapsed);
-    movingState.fillRects.forEach((rect) => {
-      context.fillStyle = "rgba(64, 112, 198, 0.72)";
-      context.fillRect(rect.x, rect.y, rect.width, rect.height);
-    });
+  const movingWallsState = getMovingWallsState(state.course, state.simElapsed);
+  movingWallsState.fillRects.forEach((rect) => {
+    context.fillStyle = "rgba(64, 112, 198, 0.72)";
+    context.fillRect(rect.x, rect.y, rect.width, rect.height);
   });
 }
 
@@ -2448,5 +2618,7 @@ loadJsonButton.addEventListener("click", () => {
     updateStatus("JSONエラー");
   }
 });
+
+window.addEventListener("resize", syncCanvasDisplaySize);
 
 requestAnimationFrame(loop);
