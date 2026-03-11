@@ -32,9 +32,12 @@ const recordFormat = document.getElementById("recordFormat");
 const courseMeta = document.getElementById("courseMeta");
 const podiumList = document.getElementById("podium");
 
-const GRID_SIZE = 28;
-const START_GOAL_SIZE = 3;
+const GRID_COLS = 15;
+const GRID_ROWS = 20;
+const START_ZONE_SIZE = 2;
+const FINISH_SIZE = 2;
 const INNER_MARGIN = 1;
+const START_ZONE_GAP = 1;
 
 const OUTPUT_PRESETS = [
   {
@@ -65,42 +68,42 @@ const STYLE_IDS = COURSE_STYLES.filter((style) => style.id !== "variety").map((s
 
 const STYLE_PROFILES = {
   snake: {
-    horizontalMax: 3,
-    swingMin: 3,
-    swingMax: 7,
-    widthMin: 2,
-    widthBase: 2,
-    widthMax: 4,
+    horizontalMax: 2,
+    swingMin: 2,
+    swingMax: 5,
+    widthMin: 1,
+    widthBase: 1,
+    widthMax: 2,
     verticalBias: 0.88,
     alternating: true
   },
   ladder: {
     horizontalMax: 2,
-    swingMin: 5,
-    swingMax: 9,
+    swingMin: 3,
+    swingMax: 6,
     widthMin: 1,
-    widthBase: 2,
-    widthMax: 3,
+    widthBase: 1,
+    widthMax: 2,
     verticalBias: 0.94,
     alternating: true
   },
   canyon: {
-    horizontalMax: 4,
+    horizontalMax: 3,
     swingMin: 2,
-    swingMax: 5,
-    widthMin: 2,
-    widthBase: 3,
-    widthMax: 5,
+    swingMax: 4,
+    widthMin: 1,
+    widthBase: 2,
+    widthMax: 2,
     verticalBias: 0.72,
     alternating: false
   },
   zigzag: {
     horizontalMax: 2,
     swingMin: 2,
-    swingMax: 5,
+    swingMax: 4,
     widthMin: 1,
     widthBase: 1,
-    widthMax: 3,
+    widthMax: 2,
     verticalBias: 0.9,
     alternating: true
   }
@@ -110,8 +113,10 @@ const COLORS = {
   page: "#f6efe2",
   stage: "#c8bea8",
   boardShadow: "rgba(70, 57, 38, 0.16)",
-  wall: "#ece7dd",
-  path: "#4f63ff",
+  wall: "#b86230",
+  wallAlt: "#cb7440",
+  mortar: "#f6ddc6",
+  path: "#f7f0df",
   start: "#25c48a",
   finishLight: "#ffffff",
   finishDark: "#121212",
@@ -316,15 +321,21 @@ function getPlayfield() {
   const topInset = portrait ? 128 : 86;
   const bottomInset = portrait ? 100 : 78;
   const horizontalInset = 34;
-  const size = Math.min(canvas.width - horizontalInset * 2, canvas.height - topInset - bottomInset);
+  const availableWidth = canvas.width - horizontalInset * 2;
+  const availableHeight = canvas.height - topInset - bottomInset;
+  const cellSize = Math.floor(Math.min(availableWidth / GRID_COLS, availableHeight / GRID_ROWS));
+  const width = cellSize * GRID_COLS;
+  const height = cellSize * GRID_ROWS;
+  const left = Math.floor((canvas.width - width) * 0.5);
+  const top = Math.floor(topInset + (availableHeight - height) * 0.5);
 
   return {
-    left: Math.floor((canvas.width - size) * 0.5),
-    top: topInset,
-    right: Math.floor((canvas.width - size) * 0.5) + size,
-    bottom: topInset + size,
-    width: size,
-    height: size
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height
   };
 }
 
@@ -333,10 +344,10 @@ function createMatrix(rows, cols, value = false) {
 }
 
 function carveRect(grid, x, y, width, height) {
-  const minX = clamp(x, 0, GRID_SIZE - 1);
-  const minY = clamp(y, 0, GRID_SIZE - 1);
-  const maxX = clamp(x + width - 1, 0, GRID_SIZE - 1);
-  const maxY = clamp(y + height - 1, 0, GRID_SIZE - 1);
+  const minX = clamp(x, 0, GRID_COLS - 1);
+  const minY = clamp(y, 0, GRID_ROWS - 1);
+  const maxX = clamp(x + width - 1, 0, GRID_COLS - 1);
+  const maxY = clamp(y + height - 1, 0, GRID_ROWS - 1);
 
   for (let row = minY; row <= maxY; row += 1) {
     for (let col = minX; col <= maxX; col += 1) {
@@ -366,14 +377,32 @@ function chooseStyle(styleId, randomFn) {
   return STYLE_IDS[randomInt(randomFn, 0, STYLE_IDS.length - 1)];
 }
 
-function generateGoalTop(randomFn, startTop) {
-  let goalTop = randomInt(randomFn, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
+function generateGoalTop(randomFn, startCenterY) {
+  let goalTop = randomInt(randomFn, INNER_MARGIN, GRID_ROWS - FINISH_SIZE - INNER_MARGIN);
   let tries = 0;
-  while (Math.abs(goalTop - startTop) < 5 && tries < 12) {
-    goalTop = randomInt(randomFn, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
+  while (Math.abs(goalTop + 1 - startCenterY) < 4 && tries < 12) {
+    goalTop = randomInt(randomFn, INNER_MARGIN, GRID_ROWS - FINISH_SIZE - INNER_MARGIN);
     tries += 1;
   }
   return goalTop;
+}
+
+function buildStartZones(count, randomFn) {
+  const totalHeight = count * START_ZONE_SIZE + (count - 1) * START_ZONE_GAP;
+  const topMin = INNER_MARGIN;
+  const topMax = Math.max(topMin, GRID_ROWS - INNER_MARGIN - totalHeight);
+  const startTop = randomInt(randomFn, topMin, topMax);
+
+  return Array.from({ length: count }, (_, index) => ({
+    x: INNER_MARGIN,
+    y: startTop + index * (START_ZONE_SIZE + START_ZONE_GAP),
+    width: START_ZONE_SIZE,
+    height: START_ZONE_SIZE
+  }));
+}
+
+function getZoneCenterRow(zone) {
+  return zone.y + Math.floor(zone.height / 2);
 }
 
 function pushPoint(path, point) {
@@ -433,10 +462,10 @@ function buildCenterline(profile, startPoint, goalPoint, targetLength, randomFn)
       direction *= -1;
     }
 
-    let room = direction > 0 ? GRID_SIZE - INNER_MARGIN - 2 - current.y : current.y - (INNER_MARGIN + 1);
+    let room = direction > 0 ? GRID_ROWS - INNER_MARGIN - 2 - current.y : current.y - (INNER_MARGIN + 1);
     if (room <= 0) {
       direction *= -1;
-      room = direction > 0 ? GRID_SIZE - INNER_MARGIN - 2 - current.y : current.y - (INNER_MARGIN + 1);
+      room = direction > 0 ? GRID_ROWS - INNER_MARGIN - 2 - current.y : current.y - (INNER_MARGIN + 1);
     }
     if (room <= 0) {
       continue;
@@ -507,19 +536,32 @@ function buildCourse(styleId, seedValue) {
   const profile = STYLE_PROFILES[resolvedStyle];
   const targetLength = Number(pathLengthInput.value);
   const widthVariance = Number(widthVarianceInput.value);
-  const grid = createMatrix(GRID_SIZE, GRID_SIZE, false);
-
-  const startLeft = INNER_MARGIN;
-  const startTop = randomInt(randomFn, INNER_MARGIN, GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN);
-  const goalLeft = GRID_SIZE - START_GOAL_SIZE - INNER_MARGIN;
-  const goalTop = generateGoalTop(randomFn, startTop);
-  const startPoint = { x: startLeft + START_GOAL_SIZE - 1, y: startTop + 1 };
+  const racerCount = Number(racerCountInput.value);
+  const grid = createMatrix(GRID_ROWS, GRID_COLS, false);
+  const startZones = buildStartZones(racerCount, randomFn);
+  const mergeCol = INNER_MARGIN + START_ZONE_SIZE + 2;
+  const mergeRow = clamp(
+    Math.round(startZones.reduce((sum, zone) => sum + getZoneCenterRow(zone), 0) / startZones.length),
+    INNER_MARGIN + 1,
+    GRID_ROWS - INNER_MARGIN - 2
+  );
+  const goalLeft = GRID_COLS - FINISH_SIZE - INNER_MARGIN;
+  const goalTop = generateGoalTop(randomFn, mergeRow);
+  const startPoint = { x: mergeCol, y: mergeRow };
   const goalPoint = { x: goalLeft, y: goalTop + 1 };
 
-  carveRect(grid, startLeft, startTop, START_GOAL_SIZE, START_GOAL_SIZE);
-  carveRect(grid, goalLeft, goalTop, START_GOAL_SIZE, START_GOAL_SIZE);
+  startZones.forEach((zone) => {
+    carveRect(grid, zone.x, zone.y, zone.width, zone.height);
 
-  const { path, actualLength } = buildCenterline(profile, startPoint, goalPoint, targetLength, randomFn);
+    const zoneCenter = { x: zone.x + zone.width - 1, y: getZoneCenterRow(zone) };
+    const corridorWidth = randomFn() < widthVariance / 100 ? 2 : 1;
+    carveConnection(grid, zoneCenter, { x: mergeCol, y: zoneCenter.y }, corridorWidth);
+    carveConnection(grid, { x: mergeCol, y: zoneCenter.y }, startPoint, corridorWidth);
+  });
+
+  carveRect(grid, goalLeft, goalTop, FINISH_SIZE, FINISH_SIZE);
+
+  const { path, actualLength: mainPathLength } = buildCenterline(profile, startPoint, goalPoint, targetLength, randomFn);
   const widths = buildWidths(profile, path, widthVariance, randomFn);
 
   path.forEach((point, index) => {
@@ -530,14 +572,14 @@ function buildCourse(styleId, seedValue) {
     }
   });
 
-  const cellSize = Math.floor(play.width / GRID_SIZE);
-  const offsetX = Math.floor(play.left + (play.width - cellSize * GRID_SIZE) * 0.5);
-  const offsetY = Math.floor(play.top + (play.height - cellSize * GRID_SIZE) * 0.5);
+  const cellSize = Math.floor(Math.min(play.width / GRID_COLS, play.height / GRID_ROWS));
+  const offsetX = Math.floor(play.left + (play.width - cellSize * GRID_COLS) * 0.5);
+  const offsetY = Math.floor(play.top + (play.height - cellSize * GRID_ROWS) * 0.5);
   const pathRects = [];
   const wallRects = [];
 
-  for (let row = 0; row < GRID_SIZE; row += 1) {
-    for (let col = 0; col < GRID_SIZE; col += 1) {
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLS; col += 1) {
       const rect = {
         x: offsetX + col * cellSize,
         y: offsetY + row * cellSize,
@@ -552,12 +594,27 @@ function buildCourse(styleId, seedValue) {
     }
   }
 
+  const startZoneRects = startZones.map((zone) => ({
+    x: offsetX + zone.x * cellSize,
+    y: offsetY + zone.y * cellSize,
+    width: zone.width * cellSize,
+    height: zone.height * cellSize
+  }));
+
+  const actualLength =
+    mainPathLength +
+    startZones.reduce(
+      (sum, zone) => sum + Math.abs(mergeCol - (zone.x + zone.width - 1)) + Math.abs(mergeRow - getZoneCenterRow(zone)),
+      0
+    );
+
   return {
     title: "SHIKAKU RACE",
     requestedStyle: styleId,
     resolvedStyle,
     seed,
-    gridSize: GRID_SIZE,
+    gridCols: GRID_COLS,
+    gridRows: GRID_ROWS,
     targetLength,
     actualLength,
     widthVariance,
@@ -567,22 +624,18 @@ function buildCourse(styleId, seedValue) {
     playfield: {
       left: offsetX,
       top: offsetY,
-      right: offsetX + cellSize * GRID_SIZE,
-      bottom: offsetY + cellSize * GRID_SIZE,
-      width: cellSize * GRID_SIZE,
-      height: cellSize * GRID_SIZE
+      right: offsetX + cellSize * GRID_COLS,
+      bottom: offsetY + cellSize * GRID_ROWS,
+      width: cellSize * GRID_COLS,
+      height: cellSize * GRID_ROWS
     },
-    startRect: {
-      x: offsetX + startLeft * cellSize,
-      y: offsetY + startTop * cellSize,
-      width: START_GOAL_SIZE * cellSize,
-      height: START_GOAL_SIZE * cellSize
-    },
+    startZones: startZoneRects,
+    startRect: startZoneRects[0],
     finishRect: {
       x: offsetX + goalLeft * cellSize,
       y: offsetY + goalTop * cellSize,
-      width: START_GOAL_SIZE * cellSize,
-      height: START_GOAL_SIZE * cellSize
+      width: FINISH_SIZE * cellSize,
+      height: FINISH_SIZE * cellSize
     },
     pathRects,
     wallRects
@@ -607,7 +660,8 @@ function syncCourseJson() {
       requestedStyle: state.course.requestedStyle,
       resolvedStyle: state.course.resolvedStyle,
       seed: state.course.seed,
-      gridSize: state.course.gridSize,
+      gridCols: state.course.gridCols,
+      gridRows: state.course.gridRows,
       targetLength: state.course.targetLength,
       actualLength: state.course.actualLength,
       widthVariance: state.course.widthVariance,
@@ -615,6 +669,7 @@ function syncCourseJson() {
       cellSize: state.course.cellSize,
       passableGrid: state.course.passableGrid,
       playfield: state.course.playfield,
+      startZones: state.course.startZones,
       startRect: state.course.startRect,
       finishRect: state.course.finishRect,
       pathRects: state.course.pathRects,
@@ -630,7 +685,9 @@ function rebuildPassableGrid(payload) {
     return payload.passableGrid;
   }
 
-  const grid = createMatrix(payload.gridSize ?? GRID_SIZE, payload.gridSize ?? GRID_SIZE, false);
+  const rows = payload.gridRows ?? payload.gridSize ?? GRID_ROWS;
+  const cols = payload.gridCols ?? payload.gridSize ?? GRID_COLS;
+  const grid = createMatrix(rows, cols, false);
   const left = payload.playfield?.left ?? 0;
   const top = payload.playfield?.top ?? 0;
   const cellSize = payload.cellSize ?? 1;
@@ -668,27 +725,28 @@ function renderPodium() {
 }
 
 function createRacers(count) {
-  const start = state.course.startRect;
   const speed = state.course.racerSpeed;
   return Array.from({ length: count }, (_, index) => {
     const palette = RACER_PALETTE[index];
-    const size = clamp(state.course.cellSize * 0.52, 10, 18);
-    const laneHeight = start.height / count;
+    const zone = state.course.startZones[index] ?? state.course.startZones[0];
+    const size = clamp(state.course.cellSize * 0.34, 8, 14);
     const angle = (Math.random() - 0.5) * 0.24;
+    const startX = zone.x + (zone.width - size) * 0.5;
+    const startY = zone.y + (zone.height - size) * 0.5;
     return {
       id: index + 1,
       label: palette.name,
       color: palette.color,
       wave: palette.wave,
       frequency: palette.frequency,
-      x: start.x + 6 + (index % 2) * 8,
-      y: start.y + laneHeight * index + laneHeight * 0.5 - size * 0.5,
+      x: startX,
+      y: startY,
       size,
       speed,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      lastSafeX: start.x + 6 + (index % 2) * 8,
-      lastSafeY: start.y + laneHeight * index + laneHeight * 0.5 - size * 0.5,
+      lastSafeX: startX,
+      lastSafeY: startY,
       finished: false,
       finishTime: 0,
       trail: [],
@@ -760,7 +818,7 @@ function intersectsRect(entity, rect) {
 function isPointOnCourse(course, x, y) {
   const col = Math.floor((x - course.playfield.left) / course.cellSize);
   const row = Math.floor((y - course.playfield.top) / course.cellSize);
-  if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) {
+  if (row < 0 || row >= course.gridRows || col < 0 || col >= course.gridCols) {
     return false;
   }
   return Boolean(course.passableGrid[row]?.[col]);
@@ -1009,15 +1067,45 @@ function drawCells(rects, fillStyle) {
   });
 }
 
+function drawBrickWalls(rects) {
+  rects.forEach((rect) => {
+    const row = Math.round((rect.y - state.course.playfield.top) / state.course.cellSize);
+    const col = Math.round((rect.x - state.course.playfield.left) / state.course.cellSize);
+    const inset = Math.max(1, Math.floor(rect.width * 0.08));
+    const splitX = rect.x + Math.floor(rect.width * (row % 2 === 0 ? 0.52 : 0.38));
+    const midY = rect.y + Math.floor(rect.height * 0.5);
+
+    context.fillStyle = (row + col) % 2 === 0 ? COLORS.wall : COLORS.wallAlt;
+    context.fillRect(rect.x, rect.y, rect.width, rect.height);
+    context.strokeStyle = COLORS.mortar;
+    context.lineWidth = Math.max(1, rect.width * 0.05);
+    context.strokeRect(rect.x + inset, rect.y + inset, rect.width - inset * 2, rect.height - inset * 2);
+
+    context.beginPath();
+    context.moveTo(rect.x + inset, midY);
+    context.lineTo(rect.x + rect.width - inset, midY);
+    context.stroke();
+
+    context.beginPath();
+    context.moveTo(splitX, rect.y + inset);
+    context.lineTo(splitX, midY);
+    context.moveTo(rect.x + rect.width - (splitX - rect.x), midY);
+    context.lineTo(rect.x + rect.width - (splitX - rect.x), rect.y + rect.height - inset);
+    context.stroke();
+  });
+}
+
 function drawStartAndGoal() {
-  const start = state.course.startRect;
   const finish = state.course.finishRect;
 
-  context.fillStyle = COLORS.start;
-  context.fillRect(start.x, start.y, start.width, start.height);
-  context.strokeStyle = COLORS.ink;
-  context.lineWidth = 2;
-  context.strokeRect(start.x, start.y, start.width, start.height);
+  state.course.startZones.forEach((zone, index) => {
+    const palette = RACER_PALETTE[index];
+    context.fillStyle = `${palette.color}cc`;
+    context.fillRect(zone.x, zone.y, zone.width, zone.height);
+    context.strokeStyle = "#fff8ef";
+    context.lineWidth = 2;
+    context.strokeRect(zone.x, zone.y, zone.width, zone.height);
+  });
 
   context.fillStyle = COLORS.finishLight;
   context.fillRect(finish.x, finish.y, finish.width, finish.height);
@@ -1025,7 +1113,7 @@ function drawStartAndGoal() {
   context.lineWidth = 2;
   context.strokeRect(finish.x, finish.y, finish.width, finish.height);
 
-  const checker = 3;
+  const checker = 4;
   const size = finish.width / checker;
   for (let row = 0; row < checker; row += 1) {
     for (let col = 0; col < checker; col += 1) {
@@ -1037,7 +1125,7 @@ function drawStartAndGoal() {
 
 function drawTrack() {
   drawBackground();
-  drawCells(state.course.wallRects, COLORS.wall);
+  drawBrickWalls(state.course.wallRects);
   drawCells(state.course.pathRects, COLORS.path);
 
   drawStartAndGoal();
@@ -1300,7 +1388,8 @@ function applyLoadedCourse(payload) {
     requestedStyle: payload.requestedStyle ?? payload.resolvedStyle ?? "manual",
     resolvedStyle: payload.resolvedStyle ?? payload.requestedStyle ?? "manual",
     seed: Number(payload.seed ?? seedInput.value),
-    gridSize: payload.gridSize ?? GRID_SIZE,
+    gridCols: payload.gridCols ?? payload.gridSize ?? GRID_COLS,
+    gridRows: payload.gridRows ?? payload.gridSize ?? GRID_ROWS,
     targetLength: Number(payload.targetLength ?? pathLengthInput.value),
     actualLength: Number(payload.actualLength ?? pathLengthInput.value),
     widthVariance: Number(payload.widthVariance ?? widthVarianceInput.value),
@@ -1308,6 +1397,7 @@ function applyLoadedCourse(payload) {
     cellSize: payload.cellSize,
     passableGrid: rebuildPassableGrid(payload),
     playfield: payload.playfield,
+    startZones: payload.startZones ?? (payload.startRect ? [payload.startRect] : []),
     startRect: payload.startRect,
     finishRect: payload.finishRect,
     pathRects: payload.pathRects ?? [],
@@ -1336,7 +1426,7 @@ generateCourse(seedInput.value);
 
 racerCountInput.addEventListener("input", () => {
   racerCountValue.textContent = racerCountInput.value;
-  resetRace(false);
+  generateCourse(seedInput.value);
 });
 
 simSpeedInput.addEventListener("input", () => {

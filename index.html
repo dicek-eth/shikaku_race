@@ -83,8 +83,8 @@
             </label>
             <label class="field">
               <span>道の長さ</span>
-              <input id="pathLength" type="range" min="48" max="220" step="4" value="120" />
-              <strong id="pathLengthValue">120</strong>
+              <input id="pathLength" type="range" min="20" max="120" step="2" value="56" />
+              <strong id="pathLengthValue">56</strong>
             </label>
             <label class="field">
               <span>幅の変化率</span>
@@ -107,12 +107,13 @@
           <div class="panel-card">
             <h2>Course Notes</h2>
             <p class="panel-note">
-              コースは `28 x 28` グリッド上に自動生成します。スタートとゴールは `3 x 3`
-              の正方形で、ゴールには白黒チェッカーを表示します。
+              コースは `15 x 20` グリッド上に自動生成します。各レーサーには `2 x 2`
+              の個別スタート枠があり、ゴールは `2 x 2`、内部は `4 x 4`
+              の白黒チェッカーで表示します。
             </p>
             <p class="panel-note">
-              道の長さでルート全体のボリュームを、幅の変化率で通路の太さの揺れを決めます。
-              Seed を変えると同じスタイルでも別ルートになります。
+              道は `1` マスまたは `2` マス幅だけで構成します。道の長さでルート全体の回り道量を、
+              幅の変化率で `1` マス道と `2` マス道の切り替わりやすさを決めます。
             </p>
           </div>
 
