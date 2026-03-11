@@ -178,6 +178,38 @@ const SOUND_PRESETS = {
     attack: 0.003,
     decay: 0.14,
     level: 0.85
+  },
+  marimba: {
+    primaryWave: "triangle",
+    overtoneWave: "sine",
+    overtoneRatio: 3,
+    attack: 0.002,
+    decay: 0.22,
+    level: 0.72
+  },
+  dream: {
+    primaryWave: "sine",
+    overtoneWave: "sine",
+    overtoneRatio: 0.5,
+    attack: 0.01,
+    decay: 0.28,
+    level: 0.62
+  },
+  musicBox: {
+    primaryWave: "triangle",
+    overtoneWave: "triangle",
+    overtoneRatio: 2.5,
+    attack: 0.002,
+    decay: 0.2,
+    level: 0.66
+  },
+  harp: {
+    primaryWave: "sine",
+    overtoneWave: "triangle",
+    overtoneRatio: 1.75,
+    attack: 0.003,
+    decay: 0.24,
+    level: 0.68
   }
 };
 
@@ -1769,7 +1801,7 @@ function collideMovingWall(course, racer, rect, movingRects) {
   playCollisionTone(racer, racer.speed * 0.9);
   normalizeRacerSpeed(racer);
 
-  if (!resolveInvalidRacerState(course, racer, movingRects, "moving-wall")) {
+  if (collidesWithStaticBoundsOrWalls(course, racer)) {
     eliminateRacer(racer, "moving-wall");
   }
 
@@ -1973,7 +2005,7 @@ function updateRace(deltaSeconds) {
     }
 
     bounceOnBounds(racer, play);
-    if (!resolveInvalidRacerState(state.course, racer, movingWallsState.fillRects, "wall-stuck")) {
+    if (!resolveInvalidRacerState(state.course, racer, [], "wall-stuck")) {
       continue;
     }
 
@@ -2008,7 +2040,7 @@ function updateRace(deltaSeconds) {
   handleRacerCollisions();
   for (const racer of state.racers) {
     if (!racer.finished && !racer.eliminated) {
-      resolveInvalidRacerState(state.course, racer, movingWallsState.fillRects, "wall-stuck");
+      resolveInvalidRacerState(state.course, racer, [], "wall-stuck");
     }
   }
   if (!state.racers.some((racer) => !racer.finished && !racer.eliminated)) {
