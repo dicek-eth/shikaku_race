@@ -8,6 +8,7 @@ const racerCountValue = document.getElementById("racerCountValue");
 const simSpeedInput = document.getElementById("simSpeed");
 const simSpeedValue = document.getElementById("simSpeedValue");
 const autoCycleInput = document.getElementById("autoCycle");
+const hudToggleInput = document.getElementById("hudToggle");
 const pathLengthInput = document.getElementById("pathLength");
 const pathLengthValue = document.getElementById("pathLengthValue");
 const widthVarianceInput = document.getElementById("widthVariance");
@@ -121,12 +122,12 @@ const COLORS = {
 };
 
 const RACER_PALETTE = [
-  { color: "#ff7a45", frequency: 220, wave: "sine" },
-  { color: "#25c48a", frequency: 247, wave: "triangle" },
-  { color: "#5b7cff", frequency: 262, wave: "square" },
-  { color: "#ffd166", frequency: 294, wave: "sawtooth" },
-  { color: "#d86cff", frequency: 330, wave: "triangle" },
-  { color: "#fb5f86", frequency: 392, wave: "square" }
+  { name: "ORANGE", color: "#ff7a45", frequency: 220, wave: "sine" },
+  { name: "MINT", color: "#25c48a", frequency: 247, wave: "triangle" },
+  { name: "BLUE", color: "#5b7cff", frequency: 262, wave: "square" },
+  { name: "YELLOW", color: "#ffd166", frequency: 294, wave: "sawtooth" },
+  { name: "VIOLET", color: "#d86cff", frequency: 330, wave: "triangle" },
+  { name: "PINK", color: "#fb5f86", frequency: 392, wave: "square" }
 ];
 
 const audioState = {
@@ -153,7 +154,9 @@ const state = {
   finishedOrder: [],
   raceIndex: 0,
   lastFrame: 0,
-  nextAutoRaceAt: 0
+  nextAutoRaceAt: 0,
+  winningRacer: null,
+  winnerBannerUntil: 0
 };
 
 function mulberry32(seed) {
@@ -674,7 +677,7 @@ function createRacers(count) {
     const angle = (Math.random() - 0.5) * 0.24;
     return {
       id: index + 1,
-      label: `SQ-${String(index + 1).padStart(2, "0")}`,
+      label: palette.name,
       color: palette.color,
       wave: palette.wave,
       frequency: palette.frequency,
@@ -702,6 +705,8 @@ function resetRace(autostart = false) {
   state.finishedOrder = [];
   state.lastFrame = 0;
   state.nextAutoRaceAt = 0;
+  state.winningRacer = null;
+  state.winnerBannerUntil = 0;
   raceTimer.textContent = "0.0s";
   pauseButton.textContent = "一時停止";
   updateStatus(autostart ? "進行中" : "待機中");
@@ -726,16 +731,20 @@ function startRace() {
   state.finishedOrder = [];
   state.lastFrame = 0;
   state.nextAutoRaceAt = 0;
+  state.winningRacer = null;
+  state.winnerBannerUntil = 0;
   state.raceIndex += 1;
   pauseButton.textContent = "一時停止";
   updateStatus("進行中");
   renderPodium();
 }
 
-function finishRace(reason = "全員ゴール") {
+function finishRace(reason = "全員ゴール", winner = null) {
   state.running = false;
   state.paused = false;
-  state.nextAutoRaceAt = autoCycleInput.checked ? performance.now() + 1800 : 0;
+  state.winningRacer = winner;
+  state.winnerBannerUntil = winner ? performance.now() + 5000 : 0;
+  state.nextAutoRaceAt = autoCycleInput.checked ? performance.now() + (winner ? 5000 : 1800) : 0;
   updateStatus(reason);
 }
 
@@ -826,8 +835,37 @@ function bounceOnAxis(racer, wall, axis) {
   normalizeRacerSpeed(racer);
 }
 
+function bounceOnBounds(racer, playfield) {
+  let collided = false;
+
+  if (racer.x < playfield.left) {
+    racer.x = playfield.left;
+    racer.vx = Math.abs(racer.vx);
+    collided = true;
+  } else if (racer.x + racer.size > playfield.right) {
+    racer.x = playfield.right - racer.size;
+    racer.vx = -Math.abs(racer.vx);
+    collided = true;
+  }
+
+  if (racer.y < playfield.top) {
+    racer.y = playfield.top;
+    racer.vy = Math.abs(racer.vy);
+    collided = true;
+  } else if (racer.y + racer.size > playfield.bottom) {
+    racer.y = playfield.bottom - racer.size;
+    racer.vy = -Math.abs(racer.vy);
+    collided = true;
+  }
+
+  if (collided) {
+    playCollisionTone(racer, racer.speed);
+    normalizeRacerSpeed(racer);
+  }
+}
+
 function handleRacerCollisions() {
-  for (let pass = 0; pass < 3; pass += 1) {
+  for (let pass = 0; pass < 5; pass += 1) {
     for (let index = 0; index < state.racers.length; index += 1) {
       const racerA = state.racers[index];
       if (racerA.finished) {
@@ -866,7 +904,7 @@ function handleRacerCollisions() {
 
         const nx = dx / distance;
         const ny = dy / distance;
-        const overlap = minDistance - distance + 0.6;
+        const overlap = minDistance - distance + 1.2;
         racerA.x -= nx * overlap * 0.5;
         racerA.y -= ny * overlap * 0.5;
         racerB.x += nx * overlap * 0.5;
@@ -892,6 +930,7 @@ function updateRace(deltaSeconds) {
   const play = state.course.playfield;
   state.elapsed += dt;
   raceTimer.textContent = formatTime(state.elapsed);
+  let winner = null;
 
   for (const racer of state.racers) {
     if (racer.finished) {
@@ -911,8 +950,7 @@ function updateRace(deltaSeconds) {
       bounceOnAxis(racer, wall, "y");
     }
 
-    racer.x = clamp(racer.x, play.left, play.right - racer.size);
-    racer.y = clamp(racer.y, play.top, play.bottom - racer.size);
+    bounceOnBounds(racer, play);
 
     if (!isRacerOnCourse(state.course, racer)) {
       recoverRacerToCourse(racer);
@@ -931,14 +969,19 @@ function updateRace(deltaSeconds) {
       racer.finishTime = state.elapsed;
       state.finishedOrder.push(racer);
       renderPodium();
+      if (state.finishedOrder.length === 1) {
+        winner = racer;
+        break;
+      }
     }
   }
 
-  handleRacerCollisions();
-
-  if (state.finishedOrder.length >= 1) {
-    finishRace("勝者確定");
+  if (winner) {
+    finishRace(`${winner.label} WIN`, winner);
+    return;
   }
+
+  handleRacerCollisions();
 }
 
 function drawBackground() {
@@ -1038,10 +1081,18 @@ function drawRacers() {
     context.fillStyle = "#171717";
     context.font = 'bold 11px "Space Grotesk"';
     context.fillText(racer.id, racer.x + racer.size * 0.28, racer.y + racer.size * 0.68);
+
+    context.fillStyle = "#fff8ef";
+    context.font = 'bold 10px "Space Grotesk"';
+    context.fillText(racer.label, racer.x - 2, racer.y - 8);
   }
 }
 
 function drawOverlay() {
+  if (!hudToggleInput.checked) {
+    return;
+  }
+
   drawRoundedRect(22, 18, canvas.width - 44, 84, 18, COLORS.chip);
   drawRoundedRect(22, canvas.height - 82, canvas.width - 44, 60, 18, COLORS.chip);
 
@@ -1092,7 +1143,36 @@ function drawOverlay() {
   }
 }
 
-function draw() {
+function drawWinnerBanner(timestamp) {
+  if (!state.winningRacer || timestamp > state.winnerBannerUntil) {
+    return;
+  }
+
+  const width = Math.min(canvas.width - 80, 420);
+  const height = 120;
+  const x = (canvas.width - width) * 0.5;
+  const y = canvas.height * 0.5 - height * 0.5;
+
+  context.shadowColor = `${state.winningRacer.color}77`;
+  context.shadowBlur = 30;
+  drawRoundedRect(x, y, width, height, 24, "rgba(255,250,243,0.96)");
+  context.shadowColor = "transparent";
+
+  context.strokeStyle = state.winningRacer.color;
+  context.lineWidth = 4;
+  context.strokeRect(x + 6, y + 6, width - 12, height - 12);
+
+  context.fillStyle = state.winningRacer.color;
+  context.font = 'bold 18px "Space Grotesk"';
+  context.fillText("WINNER", x + 24, y + 34);
+  context.fillStyle = "#171717";
+  context.font = 'bold 34px "Space Grotesk"';
+  context.fillText(`${state.winningRacer.label} WIN`, x + 24, y + 76);
+  context.font = '14px "IBM Plex Sans JP"';
+  context.fillText(`finish ${formatTime(state.winningRacer.finishTime)}`, x + 24, y + 102);
+}
+
+function draw(timestamp = performance.now()) {
   if (!state.course) {
     return;
   }
@@ -1100,6 +1180,7 @@ function draw() {
   drawTrack();
   drawRacers();
   drawOverlay();
+  drawWinnerBanner(timestamp);
 }
 
 function maybeAutoAdvance(timestamp) {
@@ -1125,7 +1206,7 @@ function loop(timestamp) {
     maybeAutoAdvance(timestamp);
   }
 
-  draw();
+  draw(timestamp);
   requestAnimationFrame(loop);
 }
 
