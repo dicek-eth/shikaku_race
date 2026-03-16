@@ -721,32 +721,38 @@ function enforceGoalPocket(grid, goalLeft, goalTop, entrance) {
 function buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY, entrance) {
   const baseX = offsetX + goalLeft * cellSize;
   const baseY = offsetY + goalTop * cellSize;
+  const inset = cellSize * 0.2;
+  const deep = cellSize * 0.8;
   if (entrance === "up") {
-    return { x: baseX, y: baseY + cellSize * 0.5, width: cellSize, height: cellSize * 0.5 };
+    return { x: baseX, y: baseY + inset, width: cellSize, height: deep };
   }
   if (entrance === "left") {
-    return { x: baseX + cellSize * 0.5, y: baseY, width: cellSize * 0.5, height: cellSize };
+    return { x: baseX + inset, y: baseY, width: deep, height: cellSize };
   }
   if (entrance === "right") {
-    return { x: baseX, y: baseY, width: cellSize * 0.5, height: cellSize };
+    return { x: baseX, y: baseY, width: deep, height: cellSize };
   }
-  return { x: baseX, y: baseY, width: cellSize, height: cellSize * 0.5 };
+  return { x: baseX, y: baseY, width: cellSize, height: deep };
 }
 
 function buildFinishTriggerRectFromRect(finishRect, entrance) {
+  const insetX = finishRect.width * 0.2;
+  const insetY = finishRect.height * 0.2;
+  const deepX = finishRect.width * 0.8;
+  const deepY = finishRect.height * 0.8;
   if (entrance === "up") {
     return {
       x: finishRect.x,
-      y: finishRect.y + finishRect.height * 0.5,
+      y: finishRect.y + insetY,
       width: finishRect.width,
-      height: finishRect.height * 0.5
+      height: deepY
     };
   }
   if (entrance === "left") {
     return {
-      x: finishRect.x + finishRect.width * 0.5,
+      x: finishRect.x + insetX,
       y: finishRect.y,
-      width: finishRect.width * 0.5,
+      width: deepX,
       height: finishRect.height
     };
   }
@@ -754,7 +760,7 @@ function buildFinishTriggerRectFromRect(finishRect, entrance) {
     return {
       x: finishRect.x,
       y: finishRect.y,
-      width: finishRect.width * 0.5,
+      width: deepX,
       height: finishRect.height
     };
   }
@@ -762,7 +768,7 @@ function buildFinishTriggerRectFromRect(finishRect, entrance) {
     x: finishRect.x,
     y: finishRect.y,
     width: finishRect.width,
-    height: finishRect.height * 0.5
+    height: deepY
   };
 }
 
