@@ -91,6 +91,15 @@ const RACER_PALETTE = [
   { name: "PINK", color: "#fb5f86", frequency: 392, wave: "square" }
 ];
 
+const RACER_SYNTH_PROFILES = [
+  { rootInterval: 0, scalePattern: [0, 2, 4, 7, 9, 12] },
+  { rootInterval: 2, scalePattern: [0, 3, 5, 7, 10, 12] },
+  { rootInterval: 4, scalePattern: [0, 2, 5, 7, 9, 12] },
+  { rootInterval: 5, scalePattern: [0, 3, 7, 10, 12] },
+  { rootInterval: 7, scalePattern: [0, 2, 4, 7, 11, 12] },
+  { rootInterval: 9, scalePattern: [0, 3, 5, 8, 10, 12] }
+];
+
 const SOUND_PRESETS = {
   classic: {
     primaryWave: "sine",
@@ -123,6 +132,15 @@ const SOUND_PRESETS = {
     attack: 0.003,
     decay: 0.14,
     level: 0.85
+  },
+  synth: {
+    primaryWave: "sawtooth",
+    overtoneWave: "square",
+    overtoneRatio: 2,
+    attack: 0.004,
+    decay: 0.2,
+    level: 0.74,
+    useRacerScale: true
   },
   marimba: {
     primaryWave: "triangle",
@@ -252,6 +270,10 @@ function getMusicPattern() {
   return MUSIC_MODES[musicModeInput?.value] ?? null;
 }
 
+function intervalToFrequency(rootFrequency, semitoneOffset) {
+  return rootFrequency * 2 ** (semitoneOffset / 12);
+}
+
 function buildRecordingFilename(extension) {
   const safeStyle = state.course?.styleId ?? "course";
   const targetRaceIndex = state.running ? state.raceIndex : state.raceIndex + 1;
@@ -350,10 +372,17 @@ function playCollisionTone(racer, impactSpeed) {
   const preset = getSoundPreset();
   const melody = getMusicPattern();
   let baseFrequency = racer.frequency;
-  if (melody?.length) {
-    const step = melody[racer.noteStep % melody.length];
-    baseFrequency = racer.frequency * 2 ** (step / 12);
-    racer.noteStep = (racer.noteStep + 1) % melody.length;
+  const noteIndex = racer.noteStep;
+  if (preset.useRacerScale) {
+    const racerScale = racer.scalePattern?.length ? racer.scalePattern : [0];
+    const racerStep = racerScale[noteIndex % racerScale.length];
+    const melodyStep = melody?.length ? melody[noteIndex % melody.length] : 0;
+    baseFrequency = intervalToFrequency(racer.rootFrequency ?? racer.frequency, racerStep + melodyStep);
+    racer.noteStep = noteIndex + 1;
+  } else if (melody?.length) {
+    const step = melody[noteIndex % melody.length];
+    baseFrequency = intervalToFrequency(racer.frequency, step);
+    racer.noteStep = noteIndex + 1;
   }
 
   const primary = audioState.context.createOscillator();
@@ -1599,6 +1628,7 @@ function createRacers(count) {
   const speed = state.course.racerSpeed;
   return Array.from({ length: count }, (_, index) => {
     const palette = RACER_PALETTE[index];
+    const synthProfile = RACER_SYNTH_PROFILES[index] ?? RACER_SYNTH_PROFILES[0];
     const zone = state.course.startZones[index] ?? state.course.startZones[0];
     const size = clamp(state.course.cellSize * 0.72, 16, 28);
     const angle = randomInt(Math.random, -65, 65) * (Math.PI / 180);
@@ -1610,6 +1640,8 @@ function createRacers(count) {
       color: palette.color,
       wave: palette.wave,
       frequency: palette.frequency,
+      rootFrequency: intervalToFrequency(196, synthProfile.rootInterval),
+      scalePattern: synthProfile.scalePattern,
       x: startX,
       y: startY,
       size,
