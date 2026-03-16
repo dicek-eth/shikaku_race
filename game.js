@@ -40,6 +40,7 @@ const recordStatus = document.getElementById("recordStatus");
 const recordFormat = document.getElementById("recordFormat");
 const courseMeta = document.getElementById("courseMeta");
 const podiumList = document.getElementById("podium");
+const raceLogList = document.getElementById("raceLog");
 
 const GRID_COLS = 15;
 const GRID_ROWS = 20;
@@ -183,6 +184,9 @@ const MUSIC_MODES = {
   chord: [0, 4, 7, 12, 7, 4]
 };
 
+const RACE_LOG_STORAGE_KEY = "shikaku-race-history";
+const MAX_RACE_LOGS = 20;
+
 const audioState = {
   context: null,
   masterGain: null,
@@ -213,11 +217,13 @@ const state = {
   elapsed: 0,
   simElapsed: 0,
   finishedOrder: [],
+  raceHistory: [],
   raceIndex: 0,
   lastFrame: 0,
   nextAutoRaceAt: 0,
   winningRacer: null,
-  winnerBannerUntil: 0
+  winnerBannerUntil: 0,
+  resultBanner: null
 };
 
 function mulberry32(seed) {
@@ -1624,6 +1630,60 @@ function renderPodium() {
   });
 }
 
+function loadRaceHistory() {
+  try {
+    const raw = window.localStorage.getItem(RACE_LOG_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    state.raceHistory = Array.isArray(parsed) ? parsed.slice(0, MAX_RACE_LOGS) : [];
+  } catch (error) {
+    state.raceHistory = [];
+  }
+}
+
+function saveRaceHistory() {
+  try {
+    window.localStorage.setItem(RACE_LOG_STORAGE_KEY, JSON.stringify(state.raceHistory.slice(0, MAX_RACE_LOGS)));
+  } catch (error) {
+    // Ignore storage failures; logging should not block races.
+  }
+}
+
+function renderRaceHistory() {
+  raceLogList.innerHTML = "";
+  if (state.raceHistory.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = "まだログはありません。";
+    raceLogList.append(item);
+    return;
+  }
+
+  state.raceHistory.slice(0, 8).forEach((entry) => {
+    const item = document.createElement("li");
+    const leaders = entry.order.slice(0, 3).join(" / ");
+    item.textContent = `#${entry.raceIndex} ${entry.result} ${leaders}`;
+    raceLogList.append(item);
+  });
+}
+
+function persistRaceResult(resultLabel) {
+  const order = [
+    ...state.finishedOrder.map((racer) => `${racer.label} ${formatTime(racer.finishTime)}`),
+    ...state.racers
+      .filter((racer) => !racer.finished)
+      .map((racer) => `${racer.label} DNF`)
+  ];
+
+  state.raceHistory.unshift({
+    raceIndex: state.raceIndex,
+    seed: state.course?.seed,
+    result: resultLabel,
+    order
+  });
+  state.raceHistory = state.raceHistory.slice(0, MAX_RACE_LOGS);
+  saveRaceHistory();
+  renderRaceHistory();
+}
+
 function createRacers(count) {
   const speed = state.course.racerSpeed;
   return Array.from({ length: count }, (_, index) => {
@@ -1674,6 +1734,7 @@ function resetRace(autostart = false) {
   state.nextAutoRaceAt = 0;
   state.winningRacer = null;
   state.winnerBannerUntil = 0;
+  state.resultBanner = null;
   raceTimer.textContent = "0.0s";
   pauseButton.textContent = "一時停止";
   updateStatus(autostart ? "進行中" : "待機中");
@@ -1704,6 +1765,7 @@ function startRace() {
   state.nextAutoRaceAt = 0;
   state.winningRacer = null;
   state.winnerBannerUntil = 0;
+  state.resultBanner = null;
   state.raceIndex += 1;
   pauseButton.textContent = "一時停止";
   updateStatus("進行中");
@@ -1715,12 +1777,24 @@ function finishRace(reason = "全員ゴール", winner = null) {
   state.running = false;
   state.paused = false;
   state.winningRacer = winner;
-  state.winnerBannerUntil = winner ? finishedAt + 5000 : 0;
-  state.nextAutoRaceAt = autoCycleInput.checked ? finishedAt + (winner ? 5000 : 1800) : 0;
+  const bannerLabel = winner ? winner.label : reason === "全員脱落" ? "DRAW" : "";
+  const bannerDuration = winner || reason === "全員脱落" ? 5000 : 0;
+  state.winnerBannerUntil = bannerDuration ? finishedAt + bannerDuration : 0;
+  state.resultBanner = bannerLabel
+    ? {
+        label: bannerLabel,
+        subtitle: winner ? `WIN / ${formatTime(winner.finishTime)}` : "ALL RACERS ELIMINATED",
+        accent: winner ? winner.color : "#7b6f61",
+        crown: Boolean(winner),
+        isDraw: !winner
+      }
+    : null;
+  state.nextAutoRaceAt = autoCycleInput.checked ? finishedAt + (bannerDuration || 1800) : 0;
   if (recorderState.mediaRecorder?.state === "recording" && isPerRaceRecording()) {
-    recorderState.pendingStopAt = winner ? state.winnerBannerUntil : finishedAt + 1200;
+    recorderState.pendingStopAt = bannerDuration ? state.winnerBannerUntil : finishedAt + 1200;
     recordStatus.textContent = "書き出し待ち";
   }
+  persistRaceResult(bannerLabel || reason);
   updateStatus(reason);
 }
 
@@ -2492,7 +2566,7 @@ function drawOverlay() {
 }
 
 function drawWinnerBanner(timestamp) {
-  if (!state.winningRacer || timestamp > state.winnerBannerUntil) {
+  if (!state.resultBanner || timestamp > state.winnerBannerUntil) {
     return;
   }
 
@@ -2501,13 +2575,13 @@ function drawWinnerBanner(timestamp) {
   const x = (canvas.width - width) * 0.5;
   const y = canvas.height * 0.5 - height * 0.5;
 
-  context.shadowColor = `${state.winningRacer.color}88`;
+  context.shadowColor = `${state.resultBanner.accent}88`;
   context.shadowBlur = 42;
   drawRoundedRect(x, y, width, height, 30, "rgba(255,250,243,0.98)");
   context.shadowColor = "transparent";
 
   const grad = context.createLinearGradient(x, y, x + width, y + height);
-  grad.addColorStop(0, state.winningRacer.color);
+  grad.addColorStop(0, state.resultBanner.accent);
   grad.addColorStop(1, "#171717");
   context.fillStyle = grad;
   drawRoundedRect(x + 10, y + 10, width - 20, height - 20, 24, grad);
@@ -2517,30 +2591,37 @@ function drawWinnerBanner(timestamp) {
 
   const crownX = canvas.width * 0.5;
   const crownY = y + 26;
-  context.fillStyle = "#ffd166";
-  context.beginPath();
-  context.moveTo(crownX - 42, crownY + 18);
-  context.lineTo(crownX - 28, crownY - 12);
-  context.lineTo(crownX - 8, crownY + 6);
-  context.lineTo(crownX, crownY - 18);
-  context.lineTo(crownX + 8, crownY + 6);
-  context.lineTo(crownX + 28, crownY - 12);
-  context.lineTo(crownX + 42, crownY + 18);
-  context.lineTo(crownX + 42, crownY + 30);
-  context.lineTo(crownX - 42, crownY + 30);
-  context.closePath();
-  context.fill();
+  if (state.resultBanner.crown) {
+    context.fillStyle = "#ffd166";
+    context.beginPath();
+    context.moveTo(crownX - 42, crownY + 18);
+    context.lineTo(crownX - 28, crownY - 12);
+    context.lineTo(crownX - 8, crownY + 6);
+    context.lineTo(crownX, crownY - 18);
+    context.lineTo(crownX + 8, crownY + 6);
+    context.lineTo(crownX + 28, crownY - 12);
+    context.lineTo(crownX + 42, crownY + 18);
+    context.lineTo(crownX + 42, crownY + 30);
+    context.lineTo(crownX - 42, crownY + 30);
+    context.closePath();
+    context.fill();
+  } else {
+    context.fillStyle = "#fff4c7";
+    context.font = '700 26px "Space Grotesk"';
+    context.textAlign = "center";
+    context.fillText("NO WINNER", canvas.width * 0.5, y + 34);
+  }
 
   context.fillStyle = "#171717";
   context.font = '700 18px "Space Grotesk"';
   context.textAlign = "center";
-  context.fillText("KING OF THE RACE", canvas.width * 0.5, y + 92);
-  context.fillStyle = state.winningRacer.color;
+  context.fillText(state.resultBanner.crown ? "KING OF THE RACE" : "RACE RESULT", canvas.width * 0.5, y + 92);
+  context.fillStyle = state.resultBanner.accent;
   context.font = '700 52px "Space Grotesk"';
-  context.fillText(state.winningRacer.label, canvas.width * 0.5, y + 142);
+  context.fillText(state.resultBanner.label, canvas.width * 0.5, y + 142);
   context.fillStyle = "#171717";
   context.font = '700 22px "IBM Plex Sans JP"';
-  context.fillText(`WIN / ${formatTime(state.winningRacer.finishTime)}`, canvas.width * 0.5, y + 178);
+  context.fillText(state.resultBanner.subtitle, canvas.width * 0.5, y + 178);
   context.textAlign = "start";
 }
 
@@ -2759,6 +2840,8 @@ function exportCourseJson() {
 }
 
 fillSelectOptions();
+loadRaceHistory();
+renderRaceHistory();
 outputPresetSelect.value = OUTPUT_PRESETS[0].id;
 recordFormat.textContent = getRecordingProfile()?.label ?? "未対応";
 updateWidthVarianceLabel();
