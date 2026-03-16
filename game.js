@@ -44,7 +44,7 @@ const podiumList = document.getElementById("podium");
 const GRID_COLS = 15;
 const GRID_ROWS = 20;
 const START_ZONE_SIZE = 1;
-const FINISH_SIZE = 2;
+const FINISH_SIZE = 1;
 const INNER_MARGIN = 1;
 const START_ZONE_GAP = 1;
 
@@ -625,6 +625,22 @@ function buildBottomStartZones(count, laneLeft, laneRight, pocketBottom) {
   }));
 }
 
+function enforceGoalPocket(grid, goalLeft, goalTop) {
+  grid[goalTop][goalLeft] = true;
+  if (goalTop + 1 < GRID_ROWS) {
+    grid[goalTop + 1][goalLeft] = true;
+  }
+  if (goalTop - 1 >= 0) {
+    grid[goalTop - 1][goalLeft] = false;
+  }
+  if (goalLeft - 1 >= 0) {
+    grid[goalTop][goalLeft - 1] = false;
+  }
+  if (goalLeft + 1 < GRID_COLS) {
+    grid[goalTop][goalLeft + 1] = false;
+  }
+}
+
 function buildSwitchbackPath(startX, laneSpecs, goalX, goalY) {
   const path = [{ x: startX, y: laneSpecs[laneSpecs.length - 1].center }];
   let current = { ...path[0] };
@@ -1059,10 +1075,7 @@ function buildRandomCourseCandidate(
   const grid = createMatrix(GRID_ROWS, GRID_COLS, false);
   const goalLeft = generateGoalLeft(randomFn);
   const goalTop = generateTopBandGoalTop(randomFn);
-  const goalPoint = {
-    x: clamp(goalLeft + randomInt(randomFn, 0, 1), INNER_MARGIN + 1, GRID_COLS - INNER_MARGIN - 2),
-    y: goalTop + randomInt(randomFn, 0, 1)
-  };
+  const goalPoint = { x: goalLeft, y: goalTop + 1 };
   const startZones = buildBottomStartZones(racerCount, INNER_MARGIN + 1, GRID_COLS - INNER_MARGIN - 2, GRID_ROWS - 1);
   const pocketTop = clamp(GRID_ROWS - 5 - randomInt(randomFn, 0, 2), INNER_MARGIN + 6, GRID_ROWS - 4);
   const hubX = clamp(
@@ -1091,8 +1104,9 @@ function buildRandomCourseCandidate(
     }
   });
 
-  carveConnection(grid, path[path.length - 1], goalPoint, Math.max(1, widths[widths.length - 1] ?? widthMode.min));
+  carveConnection(grid, path[path.length - 1], goalPoint, 1);
   const branches = buildBranches(grid, path, branchRate, widthMode, randomFn);
+  enforceGoalPocket(grid, goalLeft, goalTop);
 
   const cellSize = Math.floor(Math.min(play.width / GRID_COLS, play.height / GRID_ROWS));
   const offsetX = Math.floor(play.left + (play.width - cellSize * GRID_COLS) * 0.5);
@@ -2195,10 +2209,10 @@ function drawStartAndGoal() {
   context.fillStyle = COLORS.finishLight;
   context.fillRect(finish.x, finish.y, finish.width, finish.height);
   context.strokeStyle = COLORS.ink;
-  context.lineWidth = 2;
+  context.lineWidth = Math.max(1, finish.width * 0.08);
   context.strokeRect(finish.x, finish.y, finish.width, finish.height);
 
-  const checker = 4;
+  const checker = 2;
   const size = finish.width / checker;
   for (let row = 0; row < checker; row += 1) {
     for (let col = 0; col < checker; col += 1) {
