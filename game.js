@@ -670,8 +670,19 @@ function buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY) {
     x: offsetX + goalLeft * cellSize,
     y: offsetY + goalTop * cellSize,
     width: cellSize,
-    height: cellSize * 2
+    height: cellSize * 0.5
   };
+}
+
+function isPointInsideRect(x, y, rect) {
+  return x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
+}
+
+function isRacerInFinishZone(racer, course) {
+  const triggerRect = course.finishTriggerRect ?? course.finishRect;
+  const centerX = racer.x + racer.size * 0.5;
+  const centerY = racer.y + racer.size * 0.5;
+  return isPointInsideRect(centerX, centerY, triggerRect);
 }
 
 function buildSwitchbackPath(startX, laneSpecs, goalX, goalY) {
@@ -2115,7 +2126,7 @@ function updateRace(deltaSeconds) {
       racer.trail.shift();
     }
 
-    if (intersectsRect(racer, state.course.finishTriggerRect ?? state.course.finishRect)) {
+    if (isRacerInFinishZone(racer, state.course)) {
       racer.finished = true;
       racer.finishTime = state.elapsed;
       state.finishedOrder.push(racer);
@@ -2635,7 +2646,7 @@ function applyLoadedCourse(payload) {
             x: payload.finishRect.x,
             y: payload.finishRect.y,
             width: payload.finishRect.width,
-            height: payload.finishRect.height * 2
+            height: payload.finishRect.height * 0.5
           }
         : null),
     pathRects: payload.pathRects ?? [],
