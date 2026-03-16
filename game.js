@@ -772,8 +772,22 @@ function buildFinishTriggerRectFromRect(finishRect, entrance) {
   };
 }
 
+function intersectsCircleRect(rectEntity, circle) {
+  const closestX = clamp(circle.x, rectEntity.x, rectEntity.x + rectEntity.size);
+  const closestY = clamp(circle.y, rectEntity.y, rectEntity.y + rectEntity.size);
+  const dx = circle.x - closestX;
+  const dy = circle.y - closestY;
+  return dx * dx + dy * dy <= circle.radius * circle.radius;
+}
+
 function isRacerInFinishZone(racer, course) {
-  return intersectsRect(racer, course.finishRect);
+  const finish = course.finishRect;
+  const finishCircle = {
+    x: finish.x + finish.width * 0.5,
+    y: finish.y + finish.height * 0.5,
+    radius: Math.min(finish.width, finish.height) * 0.5
+  };
+  return intersectsCircleRect(racer, finishCircle);
 }
 
 function buildSwitchbackPath(startX, laneSpecs, goalX, goalY) {
