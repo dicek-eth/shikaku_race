@@ -498,7 +498,7 @@ function generateGoalTop(randomFn, startCenterY) {
 
 function generateTopBandGoalTop(randomFn) {
   const topMin = INNER_MARGIN;
-  const topMax = Math.min(INNER_MARGIN + 4, GRID_ROWS - FINISH_SIZE - INNER_MARGIN);
+  const topMax = Math.min(INNER_MARGIN + 2, GRID_ROWS - FINISH_SIZE - INNER_MARGIN);
   return randomInt(randomFn, topMin, topMax);
 }
 
@@ -2243,6 +2243,15 @@ function updateRace(deltaSeconds) {
   raceTimer.textContent = formatTime(state.elapsed);
   const movingWallsState = getMovingWallsState(state.course, state.simElapsed);
   let winner = null;
+  const finishRacer = (racer) => {
+    racer.finished = true;
+    racer.finishTime = state.elapsed;
+    state.finishedOrder.push(racer);
+    renderPodium();
+    if (state.finishedOrder.length === 1) {
+      winner = racer;
+    }
+  };
 
   if (movingWallsState.isComplete) {
     finishRace("MOVING WALL FULL");
@@ -2261,6 +2270,13 @@ function updateRace(deltaSeconds) {
     for (const wall of state.course.breakWalls ?? []) {
       collideBreakWall(racer, wall, "x");
     }
+    if (isRacerInFinishZone(racer, state.course)) {
+      finishRacer(racer);
+      if (winner) {
+        break;
+      }
+      continue;
+    }
     for (const wall of state.course.wallRects) {
       bounceOnAxis(racer, wall, "x");
     }
@@ -2268,6 +2284,13 @@ function updateRace(deltaSeconds) {
     racer.y += racer.vy * dt;
     for (const wall of state.course.breakWalls ?? []) {
       collideBreakWall(racer, wall, "y");
+    }
+    if (isRacerInFinishZone(racer, state.course)) {
+      finishRacer(racer);
+      if (winner) {
+        break;
+      }
+      continue;
     }
     for (const wall of state.course.wallRects) {
       bounceOnAxis(racer, wall, "y");
@@ -2294,12 +2317,8 @@ function updateRace(deltaSeconds) {
     }
 
     if (isRacerInFinishZone(racer, state.course)) {
-      racer.finished = true;
-      racer.finishTime = state.elapsed;
-      state.finishedOrder.push(racer);
-      renderPodium();
-      if (state.finishedOrder.length === 1) {
-        winner = racer;
+      finishRacer(racer);
+      if (winner) {
         break;
       }
     }
