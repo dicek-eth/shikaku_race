@@ -78,10 +78,6 @@
           <div class="panel-card">
             <h2>Course Generator</h2>
             <label class="field">
-              <span>コーススタイル</span>
-              <select id="courseStyle"></select>
-            </label>
-            <label class="field">
               <span>最短ルート長</span>
               <input id="pathLength" type="range" min="18" max="64" step="2" value="48" />
               <strong id="pathLengthValue">48</strong>
@@ -125,16 +121,16 @@
             </label>
             <div class="button-row two">
               <button id="generateCourseButton" class="primary" type="button">コース生成</button>
-              <button id="shuffleStyleButton" type="button">スタイル変更</button>
+              <button id="shuffleStyleButton" type="button">ランダム再生成</button>
             </div>
           </div>
 
           <div class="panel-card">
             <h2>Course Notes</h2>
             <p class="panel-note">
-              コースは `15 x 20` グリッド上に自動生成します。各レーサーには `1 x 1`
+              コースは `15 x 20` グリッド上にランダム生成します。各レーサーには `1 x 1`
               の個別スタート枠があり、ゴールは `2 x 2`、内部は `4 x 4`
-              の白黒チェッカーで表示します。
+              の白黒チェッカーで表示します。ゴールは上から `5` 段以内のどこかに置かれます。
             </p>
             <p class="panel-note">
               道の長さは、壁を考慮したスタートからゴールまでの最短到達距離です。生成器は、

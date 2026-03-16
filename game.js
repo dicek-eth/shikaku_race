@@ -2,7 +2,6 @@ const canvas = document.getElementById("arena");
 const context = canvas.getContext("2d");
 
 const outputPresetSelect = document.getElementById("outputPreset");
-const courseStyleSelect = document.getElementById("courseStyle");
 const racerCountInput = document.getElementById("racerCount");
 const racerCountValue = document.getElementById("racerCountValue");
 const simSpeedInput = document.getElementById("simSpeed");
@@ -65,60 +64,6 @@ const OUTPUT_PRESETS = [
     stageLabel: "1:1"
   }
 ];
-
-const COURSE_STYLES = [
-  { id: "switchback", label: "Switchback Run" },
-  { id: "variety", label: "Variety Mix" },
-  { id: "snake", label: "Snake Channel" },
-  { id: "ladder", label: "Ladder Drop" },
-  { id: "canyon", label: "Wide Canyon" },
-  { id: "zigzag", label: "Tight Zigzag" }
-];
-
-const STYLE_IDS = COURSE_STYLES.filter((style) => style.id !== "variety").map((style) => style.id);
-
-const STYLE_PROFILES = {
-  snake: {
-    horizontalMax: 2,
-    swingMin: 2,
-    swingMax: 5,
-    widthMin: 1,
-    widthBase: 1,
-    widthMax: 3,
-    verticalBias: 0.88,
-    alternating: true
-  },
-  ladder: {
-    horizontalMax: 2,
-    swingMin: 3,
-    swingMax: 6,
-    widthMin: 1,
-    widthBase: 1,
-    widthMax: 3,
-    verticalBias: 0.94,
-    alternating: true
-  },
-  canyon: {
-    horizontalMax: 3,
-    swingMin: 2,
-    swingMax: 4,
-    widthMin: 1,
-    widthBase: 2,
-    widthMax: 3,
-    verticalBias: 0.72,
-    alternating: false
-  },
-  zigzag: {
-    horizontalMax: 2,
-    swingMin: 2,
-    swingMax: 4,
-    widthMin: 1,
-    widthBase: 1,
-    widthMax: 3,
-    verticalBias: 0.9,
-    alternating: true
-  }
-};
 
 const COLORS = {
   page: "#f6efe2",
@@ -442,13 +387,6 @@ function fillSelectOptions() {
     option.textContent = preset.label;
     outputPresetSelect.append(option);
   });
-
-  COURSE_STYLES.forEach((style) => {
-    const option = document.createElement("option");
-    option.value = style.id;
-    option.textContent = style.label;
-    courseStyleSelect.append(option);
-  });
 }
 
 function setCanvasPreset(presetId) {
@@ -513,13 +451,6 @@ function carveConnection(grid, previous, next, width) {
   carveRect(grid, minX, minY, rectWidth, rectHeight);
 }
 
-function chooseStyle(styleId, randomFn) {
-  if (styleId !== "variety") {
-    return styleId;
-  }
-  return STYLE_IDS[randomInt(randomFn, 0, STYLE_IDS.length - 1)];
-}
-
 function generateGoalTop(randomFn, startCenterY) {
   let goalTop = randomInt(randomFn, INNER_MARGIN, GRID_ROWS - FINISH_SIZE - INNER_MARGIN);
   let tries = 0;
@@ -534,6 +465,10 @@ function generateTopBandGoalTop(randomFn) {
   const topMin = INNER_MARGIN;
   const topMax = Math.min(INNER_MARGIN + 4, GRID_ROWS - FINISH_SIZE - INNER_MARGIN);
   return randomInt(randomFn, topMin, topMax);
+}
+
+function generateGoalLeft(randomFn) {
+  return randomInt(randomFn, INNER_MARGIN, GRID_COLS - FINISH_SIZE - INNER_MARGIN);
 }
 
 function buildStartZones(count, randomFn) {
@@ -562,6 +497,29 @@ function getWidthMode(varianceRate) {
     return { min: 1, max: 2, label: "1-2マス" };
   }
   return { min: 1, max: 3, label: "1-3マス" };
+}
+
+function buildVariableWidths(path, widthMode, randomFn) {
+  let currentWidth = randomInt(randomFn, widthMode.min, widthMode.max);
+  const widths = [];
+  const baseChangeChance = 0.2 + (widthMode.max - widthMode.min) * 0.08;
+
+  for (let index = 0; index < path.length; index += 1) {
+    const previous = path[index - 1];
+    const current = path[index];
+    const next = path[index + 1];
+    const turning =
+      previous &&
+      next &&
+      (Math.sign(current.x - previous.x) !== Math.sign(next.x - current.x) ||
+        Math.sign(current.y - previous.y) !== Math.sign(next.y - current.y));
+    if (index > 0 && (turning || randomFn() < baseChangeChance)) {
+      currentWidth = randomInt(randomFn, widthMode.min, widthMode.max);
+    }
+    widths.push(currentWidth);
+  }
+
+  return widths;
 }
 
 function updateWidthVarianceLabel() {
@@ -706,6 +664,77 @@ function buildSwitchbackPath(startX, laneSpecs, goalX, goalY) {
   return path;
 }
 
+function buildRandomMainPath(startPoint, goalPoint, targetLength, randomFn) {
+  const path = [{ ...startPoint }];
+  let current = { ...startPoint };
+  let currentLength = 0;
+  let horizontalDirection = randomFn() > 0.5 ? 1 : -1;
+  let guard = 0;
+  const minX = INNER_MARGIN + 1;
+  const maxX = GRID_COLS - INNER_MARGIN - 2;
+  const minY = INNER_MARGIN + 1;
+
+  while ((current.y > goalPoint.y + 1 || currentLength < targetLength * 0.82) && guard < 120) {
+    guard += 1;
+    const remainingVertical = Math.max(0, current.y - goalPoint.y);
+    const remainingDirect =
+      remainingVertical + Math.abs(current.x - goalPoint.x) + Math.abs(current.y - goalPoint.y);
+    const extraBudget = Math.max(0, targetLength - currentLength - remainingDirect);
+
+    let horizontalTarget = clamp(
+      current.x + horizontalDirection * randomInt(randomFn, 2, 6),
+      minX,
+      maxX
+    );
+    if (randomFn() < 0.4 || extraBudget > 10) {
+      horizontalTarget = horizontalDirection > 0 ? maxX - randomInt(randomFn, 0, 1) : minX + randomInt(randomFn, 0, 1);
+    }
+    if (randomFn() < 0.24) {
+      horizontalTarget = clamp(goalPoint.x + randomInt(randomFn, -4, 4), minX, maxX);
+    }
+
+    while (current.x !== horizontalTarget) {
+      current = { x: current.x + Math.sign(horizontalTarget - current.x), y: current.y };
+      pushPoint(path, current);
+      currentLength += 1;
+    }
+
+    if (current.y <= goalPoint.y + 1 && currentLength >= targetLength * 0.65) {
+      break;
+    }
+
+    let verticalStep = randomInt(randomFn, 1, 4);
+    if (extraBudget > 8) {
+      verticalStep = Math.min(verticalStep + randomInt(randomFn, 1, 3), 6);
+    }
+    verticalStep = Math.min(verticalStep, Math.max(1, current.y - minY));
+
+    for (let step = 0; step < verticalStep && current.y > minY; step += 1) {
+      current = { x: current.x, y: current.y - 1 };
+      pushPoint(path, current);
+      currentLength += 1;
+    }
+
+    if (randomFn() < 0.78) {
+      horizontalDirection *= -1;
+    } else {
+      horizontalDirection = current.x > goalPoint.x ? -1 : 1;
+    }
+  }
+
+  while (current.x !== goalPoint.x) {
+    current = { x: current.x + Math.sign(goalPoint.x - current.x), y: current.y };
+    pushPoint(path, current);
+  }
+
+  while (current.y !== goalPoint.y) {
+    current = { x: current.x, y: current.y + Math.sign(goalPoint.y - current.y) };
+    pushPoint(path, current);
+  }
+
+  return path;
+}
+
 function buildOrderedCells(path) {
   const cells = [];
   const seen = new Set();
@@ -722,7 +751,7 @@ function buildOrderedCells(path) {
 
 function buildBranches(grid, path, branchRate, widthMode, randomFn) {
   const branches = [];
-  const branchCount = clamp(Math.round((branchRate / 100) * 4), 0, 4);
+  const branchCount = clamp(Math.round((branchRate / 100) * 6) + (branchRate > 30 ? 1 : 0), 0, 7);
   if (branchCount === 0 || path.length < 10) {
     return branches;
   }
@@ -730,13 +759,18 @@ function buildBranches(grid, path, branchRate, widthMode, randomFn) {
   for (let index = 0; index < branchCount; index += 1) {
     let tries = 0;
     while (tries < 16) {
-      const startIndex = randomInt(randomFn, 2, Math.max(2, path.length - 7));
-      const endIndex = randomInt(randomFn, startIndex + 3, Math.min(path.length - 2, startIndex + 8));
+      const startIndex = randomInt(randomFn, 2, Math.max(2, path.length - 10));
+      const endIndex = randomInt(randomFn, startIndex + 4, Math.min(path.length - 2, startIndex + 12));
       const start = path[startIndex];
       const end = path[endIndex];
       const direction = randomFn() > 0.5 ? 1 : -1;
-      const branchOffset = randomInt(randomFn, 2, 5);
+      const branchOffset = randomInt(randomFn, 2, 6);
       const branchRow = clamp(start.y + direction * branchOffset, INNER_MARGIN + 1, GRID_ROWS - INNER_MARGIN - 2);
+      const bendCol = clamp(
+        Math.round((start.x + end.x) * 0.5) + randomInt(randomFn, -3, 3),
+        INNER_MARGIN + 1,
+        GRID_COLS - INNER_MARGIN - 2
+      );
 
       if (Math.abs(branchRow - end.y) < 2 && Math.abs(start.x - end.x) < 3) {
         tries += 1;
@@ -744,12 +778,10 @@ function buildBranches(grid, path, branchRate, widthMode, randomFn) {
       }
 
       const width = randomInt(randomFn, widthMode.min, widthMode.max);
-      const points = [
-        start,
-        { x: start.x, y: branchRow },
-        { x: end.x, y: branchRow },
-        end
-      ];
+      const points =
+        randomFn() < 0.5
+          ? [start, { x: start.x, y: branchRow }, { x: end.x, y: branchRow }, end]
+          : [start, { x: bendCol, y: start.y }, { x: bendCol, y: branchRow }, { x: end.x, y: branchRow }, end];
       carvePolyline(grid, points, width);
       branches.push({
         startIndex,
@@ -1009,6 +1041,145 @@ function buildSwitchbackCourseCandidate(
   };
 }
 
+function buildRandomCourseCandidate(
+  seedValue,
+  attempt,
+  targetLength,
+  widthVariance,
+  branchRate,
+  breakWallCount,
+  movingWallDirection,
+  movingWallSpeedRate,
+  racerCount
+) {
+  const play = getPlayfield();
+  const seed = Number(seedValue) || 1;
+  const randomFn = mulberry32(seededAttempt(seed, attempt));
+  const widthMode = getWidthMode(widthVariance);
+  const grid = createMatrix(GRID_ROWS, GRID_COLS, false);
+  const goalLeft = generateGoalLeft(randomFn);
+  const goalTop = generateTopBandGoalTop(randomFn);
+  const goalPoint = {
+    x: clamp(goalLeft + randomInt(randomFn, 0, 1), INNER_MARGIN + 1, GRID_COLS - INNER_MARGIN - 2),
+    y: goalTop + randomInt(randomFn, 0, 1)
+  };
+  const startZones = buildBottomStartZones(racerCount, INNER_MARGIN + 1, GRID_COLS - INNER_MARGIN - 2, GRID_ROWS - 1);
+  const pocketTop = clamp(GRID_ROWS - 5 - randomInt(randomFn, 0, 2), INNER_MARGIN + 6, GRID_ROWS - 4);
+  const hubX = clamp(
+    Math.round(startZones.reduce((sum, zone) => sum + zone.x, 0) / startZones.length) + randomInt(randomFn, -2, 2),
+    INNER_MARGIN + 1,
+    GRID_COLS - INNER_MARGIN - 2
+  );
+  const startPoint = { x: hubX, y: pocketTop };
+
+  startZones.forEach((zone) => {
+    carveRect(grid, zone.x, pocketTop, 1, GRID_ROWS - pocketTop);
+    carveConnection(grid, { x: zone.x, y: pocketTop }, startPoint, randomInt(randomFn, widthMode.min, Math.min(widthMode.max, 2)));
+  });
+
+  carveRect(grid, goalLeft, goalTop, FINISH_SIZE, FINISH_SIZE);
+
+  const effectiveTarget = targetLength + attempt * 3 + randomInt(randomFn, 0, 8);
+  const path = buildRandomMainPath(startPoint, goalPoint, effectiveTarget, randomFn);
+  const widths = buildVariableWidths(path, widthMode, randomFn);
+
+  path.forEach((point, index) => {
+    const width = widths[index];
+    carveCentered(grid, point, width);
+    if (index > 0) {
+      carveConnection(grid, path[index - 1], point, Math.max(widths[index - 1], width));
+    }
+  });
+
+  carveConnection(grid, path[path.length - 1], goalPoint, Math.max(1, widths[widths.length - 1] ?? widthMode.min));
+  const branches = buildBranches(grid, path, branchRate, widthMode, randomFn);
+
+  const cellSize = Math.floor(Math.min(play.width / GRID_COLS, play.height / GRID_ROWS));
+  const offsetX = Math.floor(play.left + (play.width - cellSize * GRID_COLS) * 0.5);
+  const offsetY = Math.floor(play.top + (play.height - cellSize * GRID_ROWS) * 0.5);
+  const pathRects = [];
+  const wallRects = [];
+
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLS; col += 1) {
+      const rect = {
+        x: offsetX + col * cellSize,
+        y: offsetY + row * cellSize,
+        width: cellSize,
+        height: cellSize
+      };
+      if (grid[row][col]) {
+        pathRects.push(rect);
+      } else {
+        wallRects.push(rect);
+      }
+    }
+  }
+
+  const startZoneRects = startZones.map((zone) => ({
+    x: offsetX + zone.x * cellSize,
+    y: offsetY + zone.y * cellSize,
+    width: zone.width * cellSize,
+    height: zone.height * cellSize
+  }));
+  const mainPathCells = buildOrderedCells(path);
+  const pathIndexMap = Object.fromEntries(mainPathCells.map((cell, index) => [`${cell.x},${cell.y}`, index]));
+  const pathWidthMap = Object.fromEntries(path.map((point, index) => [`${point.x},${point.y}`, widths[index]]));
+  const shortestPathLength = measureShortestPath(grid, startZones, {
+    x: goalLeft,
+    y: goalTop,
+    width: FINISH_SIZE,
+    height: FINISH_SIZE
+  });
+  const breakWalls = buildBreakWalls(grid, path, breakWallCount, cellSize, offsetX, offsetY);
+  const movingWalls = buildMovingWalls(movingWallDirection, movingWallSpeedRate, randomFn);
+
+  return {
+    title: "SHIKAKU RACE",
+    requestedStyle: "random",
+    resolvedStyle: "random maze",
+    seed,
+    gridCols: GRID_COLS,
+    gridRows: GRID_ROWS,
+    targetLength,
+    actualLength: shortestPathLength,
+    widthVariance,
+    branchRate,
+    breakWallCount,
+    movingWallCount: movingWalls.length,
+    branchCount: branches.length,
+    widthMode,
+    movingWallDirection,
+    movingWallSpeedRate,
+    racerSpeed: clamp(cellSize * 4.5, 90, 170),
+    cellSize,
+    passableGrid: grid,
+    playfield: {
+      left: offsetX,
+      top: offsetY,
+      right: offsetX + cellSize * GRID_COLS,
+      bottom: offsetY + cellSize * GRID_ROWS,
+      width: cellSize * GRID_COLS,
+      height: cellSize * GRID_ROWS
+    },
+    startZones: startZoneRects,
+    startRect: startZoneRects[0],
+    finishRect: {
+      x: offsetX + goalLeft * cellSize,
+      y: offsetY + goalTop * cellSize,
+      width: FINISH_SIZE * cellSize,
+      height: FINISH_SIZE * cellSize
+    },
+    pathRects,
+    wallRects,
+    breakWalls,
+    movingWalls,
+    mainPathCells,
+    pathIndexMap,
+    pathWidthMap
+  };
+}
+
 function pushPoint(path, point) {
   const last = path[path.length - 1];
   if (!last || last.x !== point.x || last.y !== point.y) {
@@ -1148,151 +1319,20 @@ function buildCourseCandidate(
   movingWallSpeedRate,
   racerCount
 ) {
-  if (styleId === "switchback") {
-    return buildSwitchbackCourseCandidate(
-      seedValue,
-      attempt,
-      targetLength,
-      widthVariance,
-      branchRate,
-      breakWallCount,
-      movingWallDirection,
-      movingWallSpeedRate,
-      racerCount
-    );
-  }
-
-  const play = getPlayfield();
-  const seed = Number(seedValue) || 1;
-  const randomFn = mulberry32(seededAttempt(seed, attempt));
-  const resolvedStyle = chooseStyle(styleId, randomFn);
-  const profile = STYLE_PROFILES[resolvedStyle];
-  const widthMode = getWidthMode(widthVariance);
-  const grid = createMatrix(GRID_ROWS, GRID_COLS, false);
-  const startZones = buildStartZones(racerCount, randomFn);
-  const mergeCol = INNER_MARGIN + START_ZONE_SIZE + 2;
-  const mergeRow = clamp(
-    Math.round(startZones.reduce((sum, zone) => sum + getZoneCenterRow(zone), 0) / startZones.length),
-    INNER_MARGIN + 1,
-    GRID_ROWS - INNER_MARGIN - 2
-  );
-  const goalLeft = GRID_COLS - FINISH_SIZE - INNER_MARGIN;
-  const goalTop = generateTopBandGoalTop(randomFn);
-  const startPoint = { x: mergeCol, y: mergeRow };
-  const goalPoint = { x: goalLeft, y: goalTop + 1 };
-
-  startZones.forEach((zone) => {
-    carveRect(grid, zone.x, zone.y, zone.width, zone.height);
-
-    const zoneCenter = { x: zone.x + zone.width - 1, y: getZoneCenterRow(zone) };
-    const corridorWidth = randomInt(randomFn, widthMode.min, widthMode.max);
-    carveConnection(grid, zoneCenter, { x: mergeCol, y: zoneCenter.y }, corridorWidth);
-    carveConnection(grid, { x: mergeCol, y: zoneCenter.y }, startPoint, corridorWidth);
-  });
-
-  carveRect(grid, goalLeft, goalTop, FINISH_SIZE, FINISH_SIZE);
-
-  const effectiveTarget = targetLength + attempt * 3;
-  const { path } = buildCenterline(profile, startPoint, goalPoint, effectiveTarget, randomFn);
-  const widths = buildWidths(profile, path, widthVariance, randomFn);
-
-  path.forEach((point, index) => {
-    const width = widths[index];
-    carveCentered(grid, point, width);
-    if (index > 0) {
-      carveConnection(grid, path[index - 1], point, Math.max(widths[index - 1], width));
-    }
-  });
-
-  const branches = buildBranches(grid, path, branchRate, widthMode, randomFn);
-
-  const cellSize = Math.floor(Math.min(play.width / GRID_COLS, play.height / GRID_ROWS));
-  const offsetX = Math.floor(play.left + (play.width - cellSize * GRID_COLS) * 0.5);
-  const offsetY = Math.floor(play.top + (play.height - cellSize * GRID_ROWS) * 0.5);
-  const pathRects = [];
-  const wallRects = [];
-
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      const rect = {
-        x: offsetX + col * cellSize,
-        y: offsetY + row * cellSize,
-        width: cellSize,
-        height: cellSize
-      };
-      if (grid[row][col]) {
-        pathRects.push(rect);
-      } else {
-        wallRects.push(rect);
-      }
-    }
-  }
-
-  const startZoneRects = startZones.map((zone) => ({
-    x: offsetX + zone.x * cellSize,
-    y: offsetY + zone.y * cellSize,
-    width: zone.width * cellSize,
-    height: zone.height * cellSize
-  }));
-  const mainPathCells = buildOrderedCells(path);
-  const pathIndexMap = Object.fromEntries(mainPathCells.map((cell, index) => [`${cell.x},${cell.y}`, index]));
-  const pathWidthMap = Object.fromEntries(path.map((point, index) => [`${point.x},${point.y}`, widths[index]]));
-  const shortestPathLength = measureShortestPath(grid, startZones, {
-    x: goalLeft,
-    y: goalTop,
-    width: FINISH_SIZE,
-    height: FINISH_SIZE
-  });
-  const breakWalls = buildBreakWalls(grid, path, breakWallCount, cellSize, offsetX, offsetY);
-  const movingWalls = buildMovingWalls(movingWallDirection, movingWallSpeedRate, randomFn);
-
-  return {
-    title: "SHIKAKU RACE",
-    requestedStyle: styleId,
-    resolvedStyle,
-    seed,
-    gridCols: GRID_COLS,
-    gridRows: GRID_ROWS,
+  return buildRandomCourseCandidate(
+    seedValue,
+    attempt,
     targetLength,
-    actualLength: shortestPathLength,
     widthVariance,
     branchRate,
     breakWallCount,
-    movingWallCount: movingWalls.length,
-    branchCount: branches.length,
-    widthMode,
     movingWallDirection,
     movingWallSpeedRate,
-    racerSpeed: clamp(cellSize * 4.5, 90, 170),
-    cellSize,
-    passableGrid: grid,
-    playfield: {
-      left: offsetX,
-      top: offsetY,
-      right: offsetX + cellSize * GRID_COLS,
-      bottom: offsetY + cellSize * GRID_ROWS,
-      width: cellSize * GRID_COLS,
-      height: cellSize * GRID_ROWS
-    },
-    startZones: startZoneRects,
-    startRect: startZoneRects[0],
-    finishRect: {
-      x: offsetX + goalLeft * cellSize,
-      y: offsetY + goalTop * cellSize,
-      width: FINISH_SIZE * cellSize,
-      height: FINISH_SIZE * cellSize
-    },
-    pathRects,
-    wallRects,
-    breakWalls,
-    movingWalls,
-    mainPathCells,
-    pathIndexMap,
-    pathWidthMap
-  };
+    racerCount
+  );
 }
 
-function buildCourse(styleId, seedValue) {
+function buildCourse(seedValue) {
   const targetLength = Number(pathLengthInput.value);
   const widthVariance = Number(widthVarianceInput.value);
   const branchRate = Number(branchRateInput.value);
@@ -1304,7 +1344,7 @@ function buildCourse(styleId, seedValue) {
 
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const candidate = buildCourseCandidate(
-      styleId,
+      "random",
       seedValue,
       attempt,
       targetLength,
@@ -1326,7 +1366,7 @@ function buildCourse(styleId, seedValue) {
   return (
     bestCandidate ??
     buildCourseCandidate(
-      styleId,
+      "random",
       seedValue,
       0,
       targetLength,
@@ -1488,7 +1528,7 @@ function resetRace(autostart = false) {
 }
 
 function generateCourse(seedValue = seedInput.value) {
-  state.course = buildCourse(courseStyleSelect.value, seedValue);
+  state.course = buildCourse(seedValue);
   seedInput.value = String(state.course.seed);
   updateCourseMeta();
   syncCourseJson();
@@ -2562,7 +2602,6 @@ function exportCourseJson() {
 
 fillSelectOptions();
 outputPresetSelect.value = OUTPUT_PRESETS[0].id;
-courseStyleSelect.value = "switchback";
 recordFormat.textContent = getRecordingProfile()?.label ?? "未対応";
 updateWidthVarianceLabel();
 updateBranchRateLabel();
@@ -2619,8 +2658,6 @@ randomSeedButton.addEventListener("click", () => {
 });
 
 shuffleStyleButton.addEventListener("click", () => {
-  const style = COURSE_STYLES[randomInt(Math.random, 0, COURSE_STYLES.length - 1)];
-  courseStyleSelect.value = style.id;
   seedInput.value = String(randomSeed());
   generateCourse(seedInput.value);
 });
