@@ -772,15 +772,8 @@ function buildFinishTriggerRectFromRect(finishRect, entrance) {
   };
 }
 
-function isPointInsideRect(x, y, rect) {
-  return x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
-}
-
 function isRacerInFinishZone(racer, course) {
-  const triggerRect = course.finishTriggerRect ?? course.finishRect;
-  const centerX = racer.x + racer.size * 0.5;
-  const centerY = racer.y + racer.size * 0.5;
-  return isPointInsideRect(centerX, centerY, triggerRect);
+  return intersectsRect(racer, course.finishRect);
 }
 
 function buildSwitchbackPath(startX, laneSpecs, goalX, goalY) {
