@@ -772,12 +772,11 @@ function buildFinishTriggerRectFromRect(finishRect, entrance) {
   };
 }
 
-function intersectsCircleRect(rectEntity, circle) {
-  const closestX = clamp(circle.x, rectEntity.x, rectEntity.x + rectEntity.size);
-  const closestY = clamp(circle.y, rectEntity.y, rectEntity.y + rectEntity.size);
-  const dx = circle.x - closestX;
-  const dy = circle.y - closestY;
-  return dx * dx + dy * dy <= circle.radius * circle.radius;
+function intersectsCircles(circleA, circleB) {
+  const dx = circleA.x - circleB.x;
+  const dy = circleA.y - circleB.y;
+  const radiusSum = circleA.radius + circleB.radius;
+  return dx * dx + dy * dy <= radiusSum * radiusSum;
 }
 
 function isRacerInFinishZone(racer, course) {
@@ -787,7 +786,12 @@ function isRacerInFinishZone(racer, course) {
     y: finish.y + finish.height * 0.5,
     radius: Math.min(finish.width, finish.height) * 0.5
   };
-  return intersectsCircleRect(racer, finishCircle);
+  const racerCircle = {
+    x: racer.x + racer.size * 0.5,
+    y: racer.y + racer.size * 0.5,
+    radius: racer.size * 0.5
+  };
+  return intersectsCircles(racerCircle, finishCircle);
 }
 
 function buildSwitchbackPath(startX, laneSpecs, goalX, goalY) {
