@@ -1626,18 +1626,91 @@ function updateStatus(text) {
   raceStatus.textContent = text;
 }
 
+function getFinishCenter(course) {
+  return {
+    x: course.finishRect.x + course.finishRect.width * 0.5,
+    y: course.finishRect.y + course.finishRect.height * 0.5
+  };
+}
+
+function getRacerGoalDistance(racer, course) {
+  const goal = getFinishCenter(course);
+  const racerCenterX = racer.x + racer.size * 0.5;
+  const racerCenterY = racer.y + racer.size * 0.5;
+  return Math.hypot(racerCenterX - goal.x, racerCenterY - goal.y);
+}
+
+function buildRaceRanking() {
+  if (!state.course) {
+    return [];
+  }
+
+  const finishers = [...state.racers]
+    .filter((racer) => racer.finished)
+    .sort((a, b) => a.finishTime - b.finishTime || a.id - b.id)
+    .map((racer) => ({ racer, type: "finished", metric: racer.finishTime }));
+
+  const active = [...state.racers]
+    .filter((racer) => !racer.finished && !racer.eliminated)
+    .map((racer) => ({
+      racer,
+      type: "active",
+      metric: getRacerGoalDistance(racer, state.course)
+    }))
+    .sort((a, b) => a.metric - b.metric || a.racer.id - b.racer.id);
+
+  const dnf = [...state.racers]
+    .filter((racer) => racer.eliminated && !racer.finished)
+    .map((racer) => ({
+      racer,
+      type: "dnf",
+      metric: racer.eliminatedAt ?? 0
+    }))
+    .sort((a, b) => b.metric - a.metric || a.racer.id - b.racer.id);
+
+  const ranked = [...finishers, ...active, ...dnf];
+  let currentRank = 1;
+  ranked.forEach((entry, index) => {
+    if (index === 0) {
+      entry.rank = 1;
+      return;
+    }
+
+    const prev = ranked[index - 1];
+    const isSameDnfRank =
+      entry.type === "dnf" &&
+      prev.type === "dnf" &&
+      Math.abs((entry.metric ?? 0) - (prev.metric ?? 0)) < 1e-6;
+
+    if (!isSameDnfRank) {
+      currentRank = index + 1;
+    }
+    entry.rank = currentRank;
+  });
+
+  return ranked;
+}
+
 function renderPodium() {
   podiumList.innerHTML = "";
-  if (state.finishedOrder.length === 0) {
+  const ranking = buildRaceRanking();
+  if (ranking.length === 0) {
     const item = document.createElement("li");
     item.textContent = "まだ結果はありません。";
     podiumList.append(item);
     return;
   }
 
-  state.finishedOrder.slice(0, 6).forEach((racer, index) => {
+  ranking.slice(0, 6).forEach((entry) => {
+    const racer = entry.racer;
     const item = document.createElement("li");
-    item.textContent = `${index + 1}位 ${racer.label} ${formatTime(racer.finishTime)}`;
+    if (entry.type === "finished") {
+      item.textContent = `${entry.rank}位 ${racer.label} ${formatTime(racer.finishTime)}`;
+    } else if (entry.type === "active") {
+      item.textContent = `${entry.rank}位 ${racer.label} ${entry.metric.toFixed(0)}px`;
+    } else {
+      item.textContent = `${entry.rank}位 ${racer.label} DNF`;
+    }
     item.style.color = racer.color;
     podiumList.append(item);
   });
@@ -1679,12 +1752,15 @@ function renderRaceHistory() {
 }
 
 function persistRaceResult(resultLabel) {
-  const order = [
-    ...state.finishedOrder.map((racer) => `${racer.label} ${formatTime(racer.finishTime)}`),
-    ...state.racers
-      .filter((racer) => !racer.finished)
-      .map((racer) => `${racer.label} DNF`)
-  ];
+  const order = buildRaceRanking().map((entry) => {
+    if (entry.type === "finished") {
+      return `${entry.rank}位 ${entry.racer.label} ${formatTime(entry.racer.finishTime)}`;
+    }
+    if (entry.type === "active") {
+      return `${entry.rank}位 ${entry.racer.label} ${entry.metric.toFixed(0)}px`;
+    }
+    return `${entry.rank}位 ${entry.racer.label} DNF`;
+  });
 
   state.raceHistory.unshift({
     raceIndex: state.raceIndex,
@@ -1726,6 +1802,7 @@ function createRacers(count) {
       finished: false,
       eliminated: false,
       deathReason: "",
+      eliminatedAt: 0,
       finishTime: 0,
       noteStep: index,
       trail: [],
@@ -2127,8 +2204,10 @@ function eliminateRacer(racer, reason = "脱落") {
   }
   racer.eliminated = true;
   racer.deathReason = reason;
+  racer.eliminatedAt = state.elapsed;
   racer.vx = 0;
   racer.vy = 0;
+  renderPodium();
 }
 
 function bounceOnAxis(racer, wall, axis) {
@@ -2570,19 +2649,16 @@ function drawOverlay() {
   context.fillText(`${state.racers.filter((racer) => !racer.eliminated).length} racers`, canvas.width - 112, 76);
   context.fillText(`speed ${Number(simSpeedInput.value).toFixed(1)}x`, canvas.width - 112, 94);
 
-  const liveOrder = [...state.finishedOrder];
-  state.racers
-    .filter((racer) => !racer.finished)
-    .sort((a, b) => b.x - a.x)
-    .forEach((racer) => liveOrder.push(racer));
+  const liveOrder = buildRaceRanking().slice(0, 4);
 
-  liveOrder.slice(0, 4).forEach((racer, index) => {
-    const x = 40 + index * 120;
+  liveOrder.forEach((entry, slotIndex) => {
+    const racer = entry.racer;
+    const x = 40 + slotIndex * 120;
     context.fillStyle = racer.color;
     context.fillRect(x, canvas.height - 62, 12, 12);
     context.fillStyle = COLORS.ink;
     context.font = '13px "IBM Plex Sans JP"';
-    context.fillText(`${index + 1}. ${racer.label}`, x + 18, canvas.height - 52);
+    context.fillText(`${entry.rank}. ${racer.label}`, x + 18, canvas.height - 52);
   });
 
   context.fillStyle = COLORS.muted;
