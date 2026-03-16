@@ -471,6 +471,10 @@ function generateGoalLeft(randomFn) {
   return randomInt(randomFn, INNER_MARGIN, GRID_COLS - FINISH_SIZE - INNER_MARGIN);
 }
 
+function chooseGoalEntrance(randomFn) {
+  return ["up", "down", "left", "right"][randomInt(randomFn, 0, 3)];
+}
+
 function buildStartZones(count, randomFn) {
   const totalHeight = count * START_ZONE_SIZE + (count - 1) * START_ZONE_GAP;
   const topMin = INNER_MARGIN;
@@ -649,28 +653,81 @@ function buildBottomStartZones(count, laneLeft, laneRight, pocketBottom) {
   return zones;
 }
 
-function enforceGoalPocket(grid, goalLeft, goalTop) {
-  grid[goalTop][goalLeft] = true;
-  if (goalTop + 1 < GRID_ROWS) {
-    grid[goalTop + 1][goalLeft] = true;
+function getGoalApproachPoint(goalLeft, goalTop, entrance) {
+  if (entrance === "up") {
+    return { x: goalLeft, y: goalTop - 1 };
   }
-  if (goalTop - 1 >= 0) {
-    grid[goalTop - 1][goalLeft] = false;
+  if (entrance === "left") {
+    return { x: goalLeft - 1, y: goalTop };
   }
-  if (goalLeft - 1 >= 0) {
-    grid[goalTop][goalLeft - 1] = false;
+  if (entrance === "right") {
+    return { x: goalLeft + 1, y: goalTop };
   }
-  if (goalLeft + 1 < GRID_COLS) {
-    grid[goalTop][goalLeft + 1] = false;
-  }
+  return { x: goalLeft, y: goalTop + 1 };
 }
 
-function buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY) {
+function enforceGoalPocket(grid, goalLeft, goalTop, entrance) {
+  grid[goalTop][goalLeft] = true;
+  const around = {
+    up: { x: goalLeft, y: goalTop - 1 },
+    down: { x: goalLeft, y: goalTop + 1 },
+    left: { x: goalLeft - 1, y: goalTop },
+    right: { x: goalLeft + 1, y: goalTop }
+  };
+
+  Object.entries(around).forEach(([side, cell]) => {
+    if (cell.x < 0 || cell.x >= GRID_COLS || cell.y < 0 || cell.y >= GRID_ROWS) {
+      return;
+    }
+    grid[cell.y][cell.x] = side === entrance;
+  });
+}
+
+function buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY, entrance) {
+  const baseX = offsetX + goalLeft * cellSize;
+  const baseY = offsetY + goalTop * cellSize;
+  if (entrance === "up") {
+    return { x: baseX, y: baseY + cellSize * 0.5, width: cellSize, height: cellSize * 0.5 };
+  }
+  if (entrance === "left") {
+    return { x: baseX + cellSize * 0.5, y: baseY, width: cellSize * 0.5, height: cellSize };
+  }
+  if (entrance === "right") {
+    return { x: baseX, y: baseY, width: cellSize * 0.5, height: cellSize };
+  }
+  return { x: baseX, y: baseY, width: cellSize, height: cellSize * 0.5 };
+}
+
+function buildFinishTriggerRectFromRect(finishRect, entrance) {
+  if (entrance === "up") {
+    return {
+      x: finishRect.x,
+      y: finishRect.y + finishRect.height * 0.5,
+      width: finishRect.width,
+      height: finishRect.height * 0.5
+    };
+  }
+  if (entrance === "left") {
+    return {
+      x: finishRect.x + finishRect.width * 0.5,
+      y: finishRect.y,
+      width: finishRect.width * 0.5,
+      height: finishRect.height
+    };
+  }
+  if (entrance === "right") {
+    return {
+      x: finishRect.x,
+      y: finishRect.y,
+      width: finishRect.width * 0.5,
+      height: finishRect.height
+    };
+  }
   return {
-    x: offsetX + goalLeft * cellSize,
-    y: offsetY + goalTop * cellSize,
-    width: cellSize,
-    height: cellSize * 0.5
+    x: finishRect.x,
+    y: finishRect.y,
+    width: finishRect.width,
+    height: finishRect.height * 0.5
   };
 }
 
@@ -1091,7 +1148,8 @@ function buildSwitchbackCourseCandidate(
       width: FINISH_SIZE * cellSize,
       height: FINISH_SIZE * cellSize
     },
-    finishTriggerRect: buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY),
+    finishEntrance: "down",
+    finishTriggerRect: buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY, "down"),
     pathRects,
     wallRects,
     breakWalls,
@@ -1120,7 +1178,8 @@ function buildRandomCourseCandidate(
   const grid = createMatrix(GRID_ROWS, GRID_COLS, false);
   const goalLeft = generateGoalLeft(randomFn);
   const goalTop = generateTopBandGoalTop(randomFn);
-  const goalPoint = { x: goalLeft, y: goalTop + 1 };
+  const finishEntrance = chooseGoalEntrance(randomFn);
+  const goalPoint = getGoalApproachPoint(goalLeft, goalTop, finishEntrance);
   const startZones = buildBottomStartZones(racerCount, INNER_MARGIN + 1, GRID_COLS - INNER_MARGIN - 2, GRID_ROWS - 1);
   const pocketTop = clamp(GRID_ROWS - 5 - randomInt(randomFn, 0, 2), INNER_MARGIN + 6, GRID_ROWS - 4);
   const hubX = clamp(
@@ -1151,7 +1210,7 @@ function buildRandomCourseCandidate(
 
   carveConnection(grid, path[path.length - 1], goalPoint, 1);
   const branches = buildBranches(grid, path, branchRate, widthMode, randomFn);
-  enforceGoalPocket(grid, goalLeft, goalTop);
+  enforceGoalPocket(grid, goalLeft, goalTop, finishEntrance);
 
   const cellSize = Math.floor(Math.min(play.width / GRID_COLS, play.height / GRID_ROWS));
   const offsetX = Math.floor(play.left + (play.width - cellSize * GRID_COLS) * 0.5);
@@ -1229,7 +1288,8 @@ function buildRandomCourseCandidate(
       width: FINISH_SIZE * cellSize,
       height: FINISH_SIZE * cellSize
     },
-    finishTriggerRect: buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY),
+    finishEntrance,
+    finishTriggerRect: buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY, finishEntrance),
     pathRects,
     wallRects,
     breakWalls,
@@ -1477,6 +1537,7 @@ function syncCourseJson() {
       startZones: state.course.startZones,
       startRect: state.course.startRect,
       finishRect: state.course.finishRect,
+      finishEntrance: state.course.finishEntrance,
       finishTriggerRect: state.course.finishTriggerRect,
       pathRects: state.course.pathRects,
       wallRects: state.course.wallRects,
@@ -2639,16 +2700,10 @@ function applyLoadedCourse(payload) {
     startZones: payload.startZones ?? (payload.startRect ? [payload.startRect] : []),
     startRect: payload.startRect,
     finishRect: payload.finishRect,
+    finishEntrance: payload.finishEntrance ?? "down",
     finishTriggerRect:
       payload.finishTriggerRect ??
-      (payload.finishRect
-        ? {
-            x: payload.finishRect.x,
-            y: payload.finishRect.y,
-            width: payload.finishRect.width,
-            height: payload.finishRect.height * 0.5
-          }
-        : null),
+      (payload.finishRect ? buildFinishTriggerRectFromRect(payload.finishRect, payload.finishEntrance ?? "down") : null),
     pathRects: payload.pathRects ?? [],
     wallRects: payload.wallRects ?? [],
     breakWalls: payload.breakWalls ?? [],
