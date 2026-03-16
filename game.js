@@ -613,16 +613,40 @@ function carvePolyline(grid, points, width) {
 
 function buildBottomStartZones(count, laneLeft, laneRight, pocketBottom) {
   const usableWidth = laneRight - laneLeft + 1;
-  const gap = usableWidth >= count * 2 ? 1 : 0;
-  const totalWidth = count + (count - 1) * gap;
-  const startLeft = laneLeft + Math.max(0, Math.floor((usableWidth - totalWidth) * 0.5));
+  const grouped = count >= 4;
+  if (!grouped) {
+    const gap = usableWidth >= count * 2 ? 1 : 0;
+    const totalWidth = count + (count - 1) * gap;
+    const startLeft = laneLeft + Math.max(0, Math.floor((usableWidth - totalWidth) * 0.5));
+    return Array.from({ length: count }, (_, index) => ({
+      x: startLeft + index * (1 + gap),
+      y: pocketBottom,
+      width: 1,
+      height: 1
+    }));
+  }
 
-  return Array.from({ length: count }, (_, index) => ({
-    x: startLeft + index * (1 + gap),
-    y: pocketBottom,
-    width: 1,
-    height: 1
-  }));
+  const zones = [];
+  const groupCount = Math.ceil(count / 2);
+  const separator = 1;
+  const totalWidth = count + Math.max(0, groupCount - 1) * separator;
+  const startLeft = laneLeft + Math.max(0, Math.floor((usableWidth - totalWidth) * 0.5));
+  let cursor = startLeft;
+
+  for (let index = 0; index < count; index += 1) {
+    zones.push({
+      x: cursor,
+      y: pocketBottom,
+      width: 1,
+      height: 1
+    });
+    cursor += 1;
+    if (index % 2 === 1 && index < count - 1) {
+      cursor += separator;
+    }
+  }
+
+  return zones;
 }
 
 function enforceGoalPocket(grid, goalLeft, goalTop) {
@@ -639,6 +663,15 @@ function enforceGoalPocket(grid, goalLeft, goalTop) {
   if (goalLeft + 1 < GRID_COLS) {
     grid[goalTop][goalLeft + 1] = false;
   }
+}
+
+function buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY) {
+  return {
+    x: offsetX + goalLeft * cellSize,
+    y: offsetY + goalTop * cellSize,
+    width: cellSize,
+    height: cellSize * 2
+  };
 }
 
 function buildSwitchbackPath(startX, laneSpecs, goalX, goalY) {
@@ -1047,6 +1080,7 @@ function buildSwitchbackCourseCandidate(
       width: FINISH_SIZE * cellSize,
       height: FINISH_SIZE * cellSize
     },
+    finishTriggerRect: buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY),
     pathRects,
     wallRects,
     breakWalls,
@@ -1184,6 +1218,7 @@ function buildRandomCourseCandidate(
       width: FINISH_SIZE * cellSize,
       height: FINISH_SIZE * cellSize
     },
+    finishTriggerRect: buildFinishTriggerRect(goalLeft, goalTop, cellSize, offsetX, offsetY),
     pathRects,
     wallRects,
     breakWalls,
@@ -1431,6 +1466,7 @@ function syncCourseJson() {
       startZones: state.course.startZones,
       startRect: state.course.startRect,
       finishRect: state.course.finishRect,
+      finishTriggerRect: state.course.finishTriggerRect,
       pathRects: state.course.pathRects,
       wallRects: state.course.wallRects,
       breakWalls: state.course.breakWalls,
@@ -2079,7 +2115,7 @@ function updateRace(deltaSeconds) {
       racer.trail.shift();
     }
 
-    if (intersectsRect(racer, state.course.finishRect)) {
+    if (intersectsRect(racer, state.course.finishTriggerRect ?? state.course.finishRect)) {
       racer.finished = true;
       racer.finishTime = state.elapsed;
       state.finishedOrder.push(racer);
@@ -2592,6 +2628,16 @@ function applyLoadedCourse(payload) {
     startZones: payload.startZones ?? (payload.startRect ? [payload.startRect] : []),
     startRect: payload.startRect,
     finishRect: payload.finishRect,
+    finishTriggerRect:
+      payload.finishTriggerRect ??
+      (payload.finishRect
+        ? {
+            x: payload.finishRect.x,
+            y: payload.finishRect.y,
+            width: payload.finishRect.width,
+            height: payload.finishRect.height * 2
+          }
+        : null),
     pathRects: payload.pathRects ?? [],
     wallRects: payload.wallRects ?? [],
     breakWalls: payload.breakWalls ?? [],
