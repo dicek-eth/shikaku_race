@@ -530,6 +530,12 @@ function generateGoalTop(randomFn, startCenterY) {
   return goalTop;
 }
 
+function generateTopBandGoalTop(randomFn) {
+  const topMin = INNER_MARGIN;
+  const topMax = Math.min(INNER_MARGIN + 4, GRID_ROWS - FINISH_SIZE - INNER_MARGIN);
+  return randomInt(randomFn, topMin, topMax);
+}
+
 function buildStartZones(count, randomFn) {
   const totalHeight = count * START_ZONE_SIZE + (count - 1) * START_ZONE_GAP;
   const topMin = INNER_MARGIN;
@@ -661,7 +667,7 @@ function buildBottomStartZones(count, laneLeft, laneRight, pocketBottom) {
   }));
 }
 
-function buildSwitchbackPath(startX, laneSpecs, goalX) {
+function buildSwitchbackPath(startX, laneSpecs, goalX, goalY) {
   const path = [{ x: startX, y: laneSpecs[laneSpecs.length - 1].center }];
   let current = { ...path[0] };
   let moveRight = true;
@@ -690,6 +696,11 @@ function buildSwitchbackPath(startX, laneSpecs, goalX) {
     }
 
     moveRight = !moveRight;
+  }
+
+  while (current.y !== goalY) {
+    current = { x: current.x, y: current.y + Math.sign(goalY - current.y) };
+    pushPoint(path, current);
   }
 
   return path;
@@ -880,7 +891,7 @@ function buildSwitchbackCourseCandidate(
   });
 
   const goalLeft = INNER_MARGIN;
-  const goalTop = laneSpecs[0].top;
+  const goalTop = generateTopBandGoalTop(randomFn);
   const pocketBottom = GRID_ROWS - 1;
   const pocketTop = laneSpecs[laneCount - 1].top + laneSpecs[laneCount - 1].width;
   const startZones = buildBottomStartZones(racerCount, laneSpecs[laneCount - 1].left + 1, laneSpecs[laneCount - 1].right - 1, pocketBottom);
@@ -897,7 +908,7 @@ function buildSwitchbackCourseCandidate(
 
   carveRect(grid, goalLeft, goalTop, FINISH_SIZE, FINISH_SIZE);
 
-  const path = buildSwitchbackPath(startX, laneSpecs, goalLeft + 1);
+  const path = buildSwitchbackPath(startX, laneSpecs, goalLeft + 1, goalTop + 1);
   const widths = path.map((point) => {
     const lane = laneSpecs.find((entry) => point.y >= entry.top && point.y < entry.top + entry.width);
     return lane?.width ?? maxLaneWidth;
@@ -1166,7 +1177,7 @@ function buildCourseCandidate(
     GRID_ROWS - INNER_MARGIN - 2
   );
   const goalLeft = GRID_COLS - FINISH_SIZE - INNER_MARGIN;
-  const goalTop = generateGoalTop(randomFn, mergeRow);
+  const goalTop = generateTopBandGoalTop(randomFn);
   const startPoint = { x: mergeCol, y: mergeRow };
   const goalPoint = { x: goalLeft, y: goalTop + 1 };
 
