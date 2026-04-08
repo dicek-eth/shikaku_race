@@ -49,6 +49,7 @@ const START_ZONE_SIZE = 1;
 const FINISH_SIZE = 1;
 const INNER_MARGIN = 1;
 const START_ZONE_GAP = 1;
+const FFMPEG_ASSET_BASE = `${window.location.origin}/vendor/ffmpeg`;
 
 const OUTPUT_PRESETS = [
   {
@@ -327,9 +328,9 @@ async function ensureFfmpegReady() {
         console.info("[ffmpeg]", message);
       }
     });
-    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.7/dist/umd";
+    const baseURL = FFMPEG_ASSET_BASE;
     const classWorkerURL = await toBlobURL(
-      "https://unpkg.com/@ffmpeg/ffmpeg@0.12.12/dist/esm/worker.js",
+      `${FFMPEG_ASSET_BASE}/worker.js`,
       "text/javascript"
     );
     await ffmpeg.load({
