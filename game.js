@@ -309,8 +309,8 @@ async function ensureFfmpegReady() {
 
   ffmpegState.loadingPromise = (async () => {
     const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
-      import("https://esm.sh/@ffmpeg/ffmpeg@0.12.10?target=es2020"),
-      import("https://esm.sh/@ffmpeg/util@0.12.1?target=es2020")
+      import("https://esm.sh/@ffmpeg/ffmpeg@0.12.15?target=es2020"),
+      import("https://esm.sh/@ffmpeg/util@0.12.2?target=es2020")
     ]);
     const ffmpeg = new FFmpeg();
     ffmpeg.on("log", ({ message }) => {
@@ -318,7 +318,7 @@ async function ensureFfmpegReady() {
         console.info("[ffmpeg]", message);
       }
     });
-    const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+    const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.15/dist/umd";
     await ffmpeg.load({
       coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
       wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm")
@@ -354,9 +354,60 @@ async function convertRecordingToMp4(blob, inputExtension) {
   }
 
   await ffmpeg.writeFile(inputName, await fetchFile(blob));
-  await ffmpeg.exec(["-i", inputName, outputName]);
-  const data = await ffmpeg.readFile(outputName);
-  return new Blob([data.buffer], { type: "video/mp4" });
+  const attempts = [
+    ["-i", inputName, "-c", "copy", "-movflags", "+faststart", "-strict", "-2", outputName],
+    [
+      "-i",
+      inputName,
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-movflags",
+      "+faststart",
+      outputName
+    ],
+    [
+      "-i",
+      inputName,
+      "-c:v",
+      "mpeg4",
+      "-q:v",
+      "5",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-movflags",
+      "+faststart",
+      outputName
+    ]
+  ];
+
+  let lastError = null;
+  for (const args of attempts) {
+    try {
+      await ffmpeg.exec(args);
+      const data = await ffmpeg.readFile(outputName);
+      return new Blob([data.buffer], { type: "video/mp4" });
+    } catch (error) {
+      lastError = error;
+      ffmpegState.lastError = error instanceof Error ? error.message : String(error);
+      try {
+        await ffmpeg.deleteFile(outputName);
+      } catch (deleteError) {
+        // no-op
+      }
+    }
+  }
+
+  throw lastError ?? new Error("MP4 conversion failed");
 }
 
 function drawRoundedRect(x, y, width, height, radius, fillStyle) {
