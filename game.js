@@ -196,6 +196,14 @@ const audioState = {
   ready: false
 };
 
+const ffmpegState = {
+  ffmpeg: null,
+  fetchFile: null,
+  toBlobURL: null,
+  loaded: false,
+  loadingPromise: null
+};
+
 const recorderState = {
   mediaRecorder: null,
   chunks: [],
@@ -205,7 +213,8 @@ const recorderState = {
   armed: false,
   pendingStopAt: 0,
   clipSequence: 0,
-  filename: ""
+  filename: "",
+  targetExtension: "mp4"
 };
 
 const state = {
@@ -288,6 +297,62 @@ function buildRecordingFilename(extension) {
   return `shikaku-race-${safeStyle}-${raceLabel}-${clipLabel}.${extension}`;
 }
 
+async function ensureFfmpegReady() {
+  if (ffmpegState.loaded && ffmpegState.ffmpeg) {
+    return ffmpegState;
+  }
+  if (ffmpegState.loadingPromise) {
+    await ffmpegState.loadingPromise;
+    return ffmpegState;
+  }
+
+  ffmpegState.loadingPromise = (async () => {
+    const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
+      import("https://esm.sh/@ffmpeg/ffmpeg@0.12.10?target=es2020"),
+      import("https://esm.sh/@ffmpeg/util@0.12.1?target=es2020")
+    ]);
+    const ffmpeg = new FFmpeg();
+    const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm")
+    });
+    ffmpegState.ffmpeg = ffmpeg;
+    ffmpegState.fetchFile = fetchFile;
+    ffmpegState.toBlobURL = toBlobURL;
+    ffmpegState.loaded = true;
+  })();
+
+  try {
+    await ffmpegState.loadingPromise;
+  } finally {
+    ffmpegState.loadingPromise = null;
+  }
+  return ffmpegState;
+}
+
+async function convertRecordingToMp4(blob, inputExtension) {
+  const { ffmpeg, fetchFile } = await ensureFfmpegReady();
+  const inputName = `input.${inputExtension}`;
+  const outputName = "output.mp4";
+
+  try {
+    await ffmpeg.deleteFile(inputName);
+  } catch (error) {
+    // no-op
+  }
+  try {
+    await ffmpeg.deleteFile(outputName);
+  } catch (error) {
+    // no-op
+  }
+
+  await ffmpeg.writeFile(inputName, await fetchFile(blob));
+  await ffmpeg.exec(["-i", inputName, outputName]);
+  const data = await ffmpeg.readFile(outputName);
+  return new Blob([data.buffer], { type: "video/mp4" });
+}
+
 function drawRoundedRect(x, y, width, height, radius, fillStyle) {
   context.beginPath();
   context.moveTo(x + radius, y);
@@ -324,16 +389,6 @@ function getRecordingProfile() {
       mimeType: "video/webm",
       extension: "webm",
       label: "WebM"
-    },
-    {
-      mimeType: 'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
-      extension: "mp4",
-      label: "MP4 / H.264"
-    },
-    {
-      mimeType: "video/mp4",
-      extension: "mp4",
-      label: "MP4"
     }
   ];
 
@@ -2867,7 +2922,8 @@ function startRecording(skipRaceStart = false) {
   recorderState.chunks = [];
   recorderState.pendingStopAt = 0;
   recorderState.clipSequence += 1;
-  recorderState.filename = buildRecordingFilename(profile.extension);
+  recorderState.targetExtension = "mp4";
+  recorderState.filename = buildRecordingFilename(recorderState.targetExtension);
 
   const options = profile.mimeType
     ? {
@@ -2885,17 +2941,31 @@ function startRecording(skipRaceStart = false) {
     }
   };
 
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(recorderState.chunks, {
+  mediaRecorder.onstop = async () => {
+    const sourceBlob = new Blob(recorderState.chunks, {
       type: mediaRecorder.mimeType || profile.mimeType || "video/webm"
     });
-    downloadBlob(blob, profile.extension, recorderState.filename);
     recorderState.stream?.getTracks().forEach((track) => track.stop());
     recorderState.stream = null;
     recorderState.mediaRecorder = null;
-    recorderState.filename = "";
-    recordStatus.textContent =
-      recorderState.armed && recorderState.mode === "per-race" ? "次レース待機" : "停止中";
+
+    try {
+      recordStatus.textContent = "MP4変換中";
+      const finalBlob =
+        profile.extension === "mp4"
+          ? sourceBlob
+          : await convertRecordingToMp4(sourceBlob, profile.extension || "webm");
+      downloadBlob(finalBlob, recorderState.targetExtension, recorderState.filename);
+      recordStatus.textContent =
+        recorderState.armed && recorderState.mode === "per-race" ? "次レース待機" : "停止中";
+      recordFormat.textContent = "MP4";
+    } catch (error) {
+      downloadBlob(sourceBlob, profile.extension || "webm", buildRecordingFilename(profile.extension || "webm"));
+      recordStatus.textContent = "MP4変換失敗";
+      recordFormat.textContent = mediaRecorder.mimeType || profile.label;
+    } finally {
+      recorderState.filename = "";
+    }
   };
 
   mediaRecorder.start();
