@@ -318,8 +318,8 @@ async function ensureFfmpegReady() {
 
   ffmpegState.loadingPromise = (async () => {
     const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
-      import("https://esm.sh/@ffmpeg/ffmpeg@0.12.15?target=es2020"),
-      import("https://esm.sh/@ffmpeg/util@0.12.2?target=es2020")
+      import("https://esm.sh/@ffmpeg/ffmpeg@0.12.12?target=es2020"),
+      import("https://esm.sh/@ffmpeg/util@0.12.1?target=es2020")
     ]);
     const ffmpeg = new FFmpeg();
     ffmpeg.on("log", ({ message }) => {
@@ -327,9 +327,9 @@ async function ensureFfmpegReady() {
         console.info("[ffmpeg]", message);
       }
     });
-    const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.15/dist/umd";
+    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.7/dist/umd";
     const classWorkerURL = await toBlobURL(
-      "https://esm.sh/@ffmpeg/ffmpeg@0.12.15/es2020/worker.js",
+      "https://unpkg.com/@ffmpeg/ffmpeg@0.12.12/dist/esm/worker.js",
       "text/javascript"
     );
     await ffmpeg.load({
