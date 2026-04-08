@@ -201,7 +201,8 @@ const ffmpegState = {
   fetchFile: null,
   toBlobURL: null,
   loaded: false,
-  loadingPromise: null
+  loadingPromise: null,
+  lastError: ""
 };
 
 const recorderState = {
@@ -312,6 +313,11 @@ async function ensureFfmpegReady() {
       import("https://esm.sh/@ffmpeg/util@0.12.1?target=es2020")
     ]);
     const ffmpeg = new FFmpeg();
+    ffmpeg.on("log", ({ message }) => {
+      if (message) {
+        console.info("[ffmpeg]", message);
+      }
+    });
     const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
     await ffmpeg.load({
       coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
@@ -2960,9 +2966,11 @@ function startRecording(skipRaceStart = false) {
         recorderState.armed && recorderState.mode === "per-race" ? "次レース待機" : "停止中";
       recordFormat.textContent = "MP4";
     } catch (error) {
+      ffmpegState.lastError = error instanceof Error ? error.message : String(error);
+      console.error("MP4 conversion failed", error);
       downloadBlob(sourceBlob, profile.extension || "webm", buildRecordingFilename(profile.extension || "webm"));
-      recordStatus.textContent = "MP4変換失敗";
-      recordFormat.textContent = mediaRecorder.mimeType || profile.label;
+      recordStatus.textContent = "MP4変換失敗(WebM保存)";
+      recordFormat.textContent = `${mediaRecorder.mimeType || profile.label}`;
     } finally {
       recorderState.filename = "";
     }
