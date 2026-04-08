@@ -2807,6 +2807,11 @@ function stopRecording() {
     return;
   }
   recorderState.pendingStopAt = 0;
+  try {
+    recorderState.mediaRecorder.requestData();
+  } catch (error) {
+    // Some browsers throw if requestData is not available at this moment.
+  }
   recorderState.mediaRecorder.stop();
 }
 
@@ -2815,6 +2820,11 @@ function stopRecordingAfterRace() {
     return;
   }
   recorderState.pendingStopAt = 0;
+  try {
+    recorderState.mediaRecorder.requestData();
+  } catch (error) {
+    // Some browsers throw if requestData is not available at this moment.
+  }
   recorderState.mediaRecorder.stop();
 }
 
@@ -2831,6 +2841,17 @@ function startRecording(skipRaceStart = false) {
     return;
   }
 
+  recorderState.mode = recordingModeInput.value;
+  recorderState.profile = profile;
+  recorderState.armed = recorderState.mode === "per-race";
+  recordFormat.textContent = profile.label;
+
+  if (isPerRaceRecording() && !state.running && !skipRaceStart) {
+    recorderState.pendingStopAt = 0;
+    recordStatus.textContent = "次レース待機";
+    return;
+  }
+
   const stream = canvas.captureStream(60);
   const tracks = [...stream.getVideoTracks()];
   if (audioState.mediaDestination) {
@@ -2839,9 +2860,6 @@ function startRecording(skipRaceStart = false) {
 
   recorderState.stream = new MediaStream(tracks);
   recorderState.chunks = [];
-  recorderState.profile = profile;
-  recorderState.mode = recordingModeInput.value;
-  recorderState.armed = recorderState.mode === "per-race";
   recorderState.pendingStopAt = 0;
   recorderState.clipSequence += 1;
   recorderState.filename = buildRecordingFilename(profile.extension);
@@ -2873,7 +2891,6 @@ function startRecording(skipRaceStart = false) {
 
   mediaRecorder.start();
   recordStatus.textContent = isPerRaceRecording() ? "1レース録画中" : "録画中";
-  recordFormat.textContent = profile.label;
 
   if (!state.running && !skipRaceStart) {
     startRace();
