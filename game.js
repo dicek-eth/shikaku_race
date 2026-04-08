@@ -311,6 +311,21 @@ function getRecordingProfile() {
 
   const candidates = [
     {
+      mimeType: "video/webm;codecs=vp9,opus",
+      extension: "webm",
+      label: "WebM / Opus"
+    },
+    {
+      mimeType: "video/webm;codecs=vp8,opus",
+      extension: "webm",
+      label: "WebM / Opus"
+    },
+    {
+      mimeType: "video/webm",
+      extension: "webm",
+      label: "WebM"
+    },
+    {
       mimeType: 'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
       extension: "mp4",
       label: "MP4 / H.264"
@@ -319,16 +334,6 @@ function getRecordingProfile() {
       mimeType: "video/mp4",
       extension: "mp4",
       label: "MP4"
-    },
-    {
-      mimeType: "video/webm;codecs=vp9,opus",
-      extension: "webm",
-      label: "WebM fallback"
-    },
-    {
-      mimeType: "video/webm",
-      extension: "webm",
-      label: "WebM fallback"
     }
   ];
 
@@ -2865,8 +2870,12 @@ function startRecording(skipRaceStart = false) {
   recorderState.filename = buildRecordingFilename(profile.extension);
 
   const options = profile.mimeType
-    ? { mimeType: profile.mimeType, videoBitsPerSecond: 4_000_000 }
-    : { videoBitsPerSecond: 4_000_000 };
+    ? {
+        mimeType: profile.mimeType,
+        videoBitsPerSecond: 4_000_000,
+        audioBitsPerSecond: 128_000
+      }
+    : { videoBitsPerSecond: 4_000_000, audioBitsPerSecond: 128_000 };
   const mediaRecorder = new MediaRecorder(recorderState.stream, options);
   recorderState.mediaRecorder = mediaRecorder;
 
@@ -2878,7 +2887,7 @@ function startRecording(skipRaceStart = false) {
 
   mediaRecorder.onstop = () => {
     const blob = new Blob(recorderState.chunks, {
-      type: profile.mimeType || "video/webm"
+      type: mediaRecorder.mimeType || profile.mimeType || "video/webm"
     });
     downloadBlob(blob, profile.extension, recorderState.filename);
     recorderState.stream?.getTracks().forEach((track) => track.stop());
@@ -2891,6 +2900,7 @@ function startRecording(skipRaceStart = false) {
 
   mediaRecorder.start();
   recordStatus.textContent = isPerRaceRecording() ? "1レース録画中" : "録画中";
+  recordFormat.textContent = mediaRecorder.mimeType || profile.label;
 
   if (!state.running && !skipRaceStart) {
     startRace();
